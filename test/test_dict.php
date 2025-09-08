@@ -5,7 +5,7 @@ require_once 'vendor/autoload.php';
 use App\Http\DictClient;
 use Dotenv\Dotenv;
 
-$dotenv = Dotenv::createUnsafeImmutable(__DIR__);
+$dotenv = Dotenv::createUnsafeImmutable(dirname(__DIR__));
 $dotenv->safeload();
 
 $base = $_ENV['APP_API_BASE'];
