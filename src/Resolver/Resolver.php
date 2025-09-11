@@ -91,7 +91,20 @@ final class Resolver
         return $s;
     }
 
-
+    /**
+     * @param int $clubId
+     * @param string $level
+     * @return int|null
+     */
+    private function pickTeamIdByClubAndLevel(int $clubId, string $level): ?int
+    {
+        foreach ($this->teams as $t) {
+            if ((int)$t['club_id'] === $clubId && (string)$t['level'] === $level) {
+                return (int)$t['team_id'];
+            }
+        }
+        return null;
+    }
 
     /**
      * レベル（First|Farm）を明示してチームIDを解決
@@ -101,18 +114,21 @@ final class Resolver
      */
     public function resolveTeamIdFuzzy(string $teamName, string $level): ?int
     {
-        // 1) strict
-        $id = $this->resolveTeamIdStrict($teamName);
+        // 1) level に応じて first/farm の辞書で正規化 → strict
+        $id = $level === 'First'
+            ? $this->resolveTeamIdStrict($this->alias->normalizeTeamFirst($teamName))
+            : $this->resolveTeamIdStrict($this->alias->normalizeTeamFarm($teamName));
         if ($id !== null) return $id;
 
-        // 2) レベル別の辞書で正規名化 → strict
-        $normalized = match ($level) {
-            'First' => $this->alias->normalizeTeamFirst($teamName),
-            'Farm'  => $this->alias->normalizeTeamFarm($teamName),
-            default => $teamName, // 想定外はそのまま
-        };
+        // 2) それでもダメなら「クラブ」辞書で club_id を当てて、レベルでチーム選定
+        $clubId = $this->resolveClubIdFuzzy($teamName);
+        if ($clubId !== null) {
+            $picked = $this->pickTeamIdByClubAndLevel($clubId, $level);
+            if ($picked !== null) return $picked;
+        }
 
-        return $this->resolveTeamIdStrict($normalized);
+        // 3) 最後に strict そのまま（念のため）
+        return $this->resolveTeamIdStrict($teamName);
     }
 
     /**
