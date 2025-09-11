@@ -1,0 +1,21 @@
+{
+    "ロッテ": {
+        "raw": "ロッテ",
+        "first_seen": "2025-09-11T11:09:48+00:00",
+        "seen": 3,
+        "samples": [
+            {
+                "url": "https://baseball.yahoo.co.jp/npb/game/2021030951/top",
+                "page_date": "9/10（水）ロッテ"
+            },
+            {
+                "url": "https://baseball.yahoo.co.jp/npb/game/2021030951/top",
+                "page_date": "9/10（水）ロッテ"
+            },
+            {
+                "url": "https://baseball.yahoo.co.jp/npb/game/2021030951/top",
+                "page_date": "9/10（水）ロッテ"
+            }
+        ]
+    }
+}

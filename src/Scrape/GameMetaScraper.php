@@ -43,16 +43,22 @@ final class GameMetaScraper
 
         // 試合日時・球場名
         $dateLabel = $this->textOrNull($crawler, '#async-gameCard');
+        if ($dateLabel !== null) {
+            // 「日付／時間／球場」が同じブロックにいるので前側だけを抽出
+            // 例: "9/7（日） 18:00 甲子園" → 最初の語を球場として扱う簡易版
+            $dateLabel = trim(preg_replace('/^(\S+).*\s/u', '$1', preg_replace('/\s+/u', ' ', $dateLabel) ?? $dateLabel));
+        }
         $time = $this->textOrNull($crawler, '#async-gameCard time');
         $stadium = $this->textOrNull($crawler, '#async-gameCard');
         if ($stadium !== null) {
-            // 「日付／時間／球場」が同じブロックにいるので後ろ側だけを抽出
+            // 「日付／時間／球場」が同じブロックにいるので後側だけを抽出
             // 例: "9/7（日） 18:00 甲子園" → 最後の語を球場として扱う簡易版
             $stadium = trim(preg_replace('/.*\s+(\S+)$/u', '$1', preg_replace('/\s+/u', ' ', $stadium) ?? $stadium));
         }
 
+
         // チーム名（ホーム→アウェイの順で2ブロックある想定）
-        $teamNodes = $crawler->filter('div.bb-gameTeam p.bb-gameTeam__name a');
+        $teamNodes = $crawler->filter('div.bb-gameTeam p.bb-gameTeam__name');
         $homeRaw = $teamNodes->count() >= 1 ? trim($teamNodes->eq(0)->text()) : null;
         $awayRaw = $teamNodes->count() >= 2 ? trim($teamNodes->eq(1)->text()) : null;
 

@@ -8,6 +8,7 @@ use App\Http\DictClient;
 use App\Resolver\Resolver;
 use App\Resolver\AliasNormalizer;
 use App\Scrape\GameMetaScraper;
+use App\Resolver\UnknownRegistry;
 use GuzzleHttp\Client;
 use Dotenv\Dotenv;
 
@@ -50,7 +51,20 @@ try {
     exit(1);
 }
 
-// 4) 出力と未解決ログ
+// 4) 未解決をリストに保存
+$reg = new UnknownRegistry(dirname(__DIR__) . '/data/pending_aliases');
+
+if (($result['home_team_id'] ?? null) === null && !empty($result['home_team_raw'])) {
+    $reg->record($pageLevel === 'First' ? 'teams_first' : 'teams_farm', $result['home_team_raw'], ['url' => $url, 'level' => $pageLevel, 'page_date' => $result['date_label']]);
+}
+if (($result['away_team_id'] ?? null) === null && !empty($result['away_team_raw'])) {
+    $reg->record($pageLevel === 'First' ? 'teams_first' : 'teams_farm', $result['away_team_raw'], ['url' => $url, 'level' => $pageLevel, 'page_date' => $result['date_label']]);
+}
+if (($result['stadium_id'] ?? null) === null && !empty($result['stadium_raw'])) {
+    $reg->record('stadiums', $result['stadium_raw'], ['url' => $url, 'page_date' => $result['date_label']]);
+}
+
+// 5) 出力と未解決ログ
 $logDir = dirname(__DIR__) . '/logs';
 if (!is_dir($logDir)) mkdir($logDir, 0777, true);
 
