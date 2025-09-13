@@ -1,0 +1,333 @@
+@startuml schema
+' ==========================
+' チーム・球場・試合関連
+' ==========================
+
+' クラブ（親組織）：一軍/ファームの上位概念
+class Club {
+  + club_id : INT <<PK>> // クラブの一意識別子（球団）
+  + club_name : VARCHAR(100) // 例: 読売ジャイアンツ
+  + created_at : DATETIME // 作成日時
+  + updated_at : DATETIME // 更新日時
+}
+
+' チーム（編成単位）：一軍/ファームなど
+class Team {
+  + team_id : INT <<PK>> // チームの一意識別子
+  + club_id : INT <<FK>> // 所属クラブID
+  + team_name : VARCHAR(100) // チーム名（例: 読売ジャイアンツ（一軍） など）
+  + league : VARCHAR(50) // 所属リーグ（例：Central、Eastern など）
+  + level : VARCHAR(20) // レベル（First, Farm など）
+  + created_at : DATETIME // レコード作成日時
+  + updated_at : DATETIME // 最終更新日時
+}
+
+Club "1" -- "0..*" Team : "owns"
+
+
+' 球場テーブル：各球場の基本情報を管理
+class Stadium {
+  + stadium_id : INT <<PK>> // 球場の一意識別子
+  + stadium_name : VARCHAR(100) // 球場名
+  + is_dome : BOOLEAN // ドーム球場の場合TRUE
+  + created_at : DATETIME // レコード作成日時
+  + updated_at : DATETIME // 最終更新日時
+}
+
+' 試合カテゴリテーブル：試合種別（公式戦、ファーム、交流戦など）を管理
+class GameCategory {
+  + category_id : INT <<PK>> // カテゴリの一意識別子
+  + category_name : VARCHAR(50) // 例: Official, Farm, Interleague, CS, JapanSeries, Open
+  + created_at : DATETIME // 作成日時
+  + updated_at : DATETIME // 更新日時
+}
+
+' 試合テーブル：各試合の詳細情報を管理
+class Game {
+  + game_id : INT <<PK>> // 試合の一意識別子
+  + season_year : INT // シーズン年度（2月始まり）
+  + game_date : DATE // 試合日
+  + stadium_id : INT <<FK>> // 使用球場ID
+  + home_team_id : INT <<FK>> // ホームチームID
+  + away_team_id : INT <<FK>> // アウェイチームID
+  + final_score_home : INT // ホームチーム最終得点
+  + final_score_away : INT // アウェイチーム最終得点
+  + status : VARCHAR(20) // 試合状態（scheduled, completed, cancelled）
+  + is_nighter : VARCHAR(10) // ナイターかどうか(17時以降開始ならTRUE)
+  + category_id : INT <<FK>> // 試合カテゴリID
+  + created_at : DATETIME // 作成日時
+  + updated_at : DATETIME // 更新日時
+}
+
+Team "1" -- "0..*" Game : "hosts/visits"
+Stadium "1" -- "0..*" Game : "hosts"
+GameCategory "1" -- "0..*" Game : "categorizes"
+
+' ==========================
+' 選手・所属関連
+' ==========================
+
+' プレイヤーテーブル：各選手の最新の名前情報を管理
+class Player {
+  + player_id : INT <<PK>> // 選手の一意識別子
+  + official_name : VARCHAR(100) // 最新の公式登録名（例: 坂本勇人）
+  + display_name : VARCHAR(100) // 最新の表示名（例: 坂本 or 坂本勇）
+  + english_name : VARCHAR(100) // 最新の英語公式登録名（例: Hayato Sakamoto）
+  + date_of_birth : DATE // 生年月日
+  + height : INT // 身長 (cm)
+  + weight : INT // 体重 (kg)
+  + throws_left : BOOLEAN // 左投げならTRUE
+  + throws_right : BOOLEAN // 右投げならTRUE
+  + bats_left : BOOLEAN // 左打ちならTRUE
+  + bats_right : BOOLEAN // 右打ちならTRUE
+  + created_at : DATETIME // 作成日時
+  + updated_at : DATETIME // 更新日時
+}
+
+' PlayerNameHistoryテーブル：公式登録名・表示名の変更履歴を管理
+class PlayerNameHistory {
+  + history_id : INT <<PK>> // 履歴レコードの一意識別子
+  + player_id : INT <<FK>> // 対象選手のID
+  + name : VARCHAR(100) // 変更された名前（例: 坂本勇人, 坂本勇）
+  + name_type : VARCHAR(20) // 名称の種類 ("official", "display", "english")
+  + effective_date : DATE // この名前が有効になった日
+  + end_date : DATE // この名前の終了日（現状ならNULL）
+  + created_at : DATETIME // 履歴作成日時
+  + updated_at : DATETIME // 履歴更新日時
+}
+
+' クラブ在籍（所属）履歴：選手はクラブに所属する（チームではなくクラブ）
+class ClubMembership {
+  + membership_id : INT <<PK>> // 在籍レコードID
+  + player_id : INT <<FK>> // 選手ID
+  + club_id : INT <<FK>> // クラブID
+  + start_date : DATE // 所属開始日
+  + end_date : DATE // 所属終了日（現役ならNULL）
+  + uniform_number : INT // 背番号（任意、年次で変動可）
+  + created_at : DATETIME // 作成日時
+  + updated_at : DATETIME // 更新日時
+}
+
+Player "1" -- "0..*" ClubMembership : "belongs to clubs over time"
+Club "1" -- "0..*" ClubMembership : "employs players"
+Player "1" -- "0..*" PlayerNameHistory : "has name history"
+
+' 出場状況テーブル：各試合での出場情報（スタメン・交代含む）
+class PlayerGameAppearance {
+  + appearance_id : INT <<PK>> // 出場記録の一意識別子
+  + game_id : INT <<FK>> // 試合ID
+  + player_id : INT <<FK>> // 選手ID
+  + team_id : INT <<FK>> // その試合で所属するチーム
+  + position : VARCHAR(20) // 出場ポジション（例: Pitcher, Catcher, Infield, Outfield）
+  + start_inning : INT // 出場開始イニング（例: スタメンなら1）
+  + end_inning : INT // 出場終了イニング（交代があればそのイニング、無ければ最終イニング）
+  + outs_recoreded : INT // 出場アウト数（PlayerGameAppearance集計値->3で除してInningsPlayedにする）
+  + roster_id : INT <<FK>> // 所属情報ID（Rosterテーブルの参照）
+  + created_at : DATETIME // 作成日時
+  + updated_at : DATETIME // 更新日時
+}
+
+Team "1" -- "0..*" PlayerGameAppearance : "fields"
+Game "1" -- "0..*" PlayerGameAppearance : "has appearance records"
+Player "1" -- "0..*" PlayerGameAppearance : "appears in game"
+
+' ==========================
+' インプレー毎のイベント（PlayByPlay）
+' ==========================
+class PlayByPlay {
+  + pbp_id : INT <<PK>> // インプレーの一意識別子
+  + game_id : INT <<FK>> // 試合ID
+  + inning : INT // イニング番号
+  + top_bottom : VARCHAR(1) // T: 上, B: 下
+  + pbp_sequence : INT // イニング内のシーケンス番号（1から始まる）
+  + anchor_pitch_sequence : INT // 投球シーケンス番号（pitcherの投球イベントのシーケンス）（0球でもイベントは発生するので0から始まる）
+  + count_b : INT // 現在のボール数
+  + count_s : INT // 現在のストライク数
+  + count_o : INT // 現在のアウト数
+  + batter_id : INT <<FK>> // 打者の選手ID
+  + pitcher_id : INT <<FK>> // 投手の選手ID
+  + runner_first_id : INT <<FK>> // 1塁走者（NULL可）
+  + runner_second_id : INT <<FK>> // 2塁走者（NULL可）
+  + runner_third_id : INT <<FK>> // 3塁走者（NULL可）
+  + event_type : VARCHAR(50) // イベント種別（例: play, substitution, pitch, steal, error, advancement, wild_pitch, passed_ball, interference）
+  + created_at : DATETIME // 作成日時
+  + updated_at : DATETIME // 更新日時
+}
+
+Game "1" -- "0..*" PlayByPlay : "contains events"
+Player "1" -- "0..*" PlayByPlay : "as batter/pitcher/runners"
+
+' ==========================
+' 各イベントテーブル
+' ==========================
+class PitchEvent {
+  + event_id : INT <<PK>> // 投球イベントの一意識別子
+  + pbp_id : INT <<FK>> // 関連するPlayByPlay ID
+  + pitcher_id : INT <<FK>> // 投手の選手ID
+  + batter_id : INT <<FK>> // 打者の選手ID
+  + pitch_velocity : INT // 球速 (km/h)
+  + pitch_type : VARCHAR(50) // 球種（例: Fastball, Curve, Slider）
+  + pitch_location_x : FLOAT // 投球位置X（正規化: 0～1）
+  + pitch_location_y : FLOAT // 投球位置Y（正規化: 0～1）
+  + swing : BOOLEAN // スイング有無
+  + hit_bases : INT // ヒットの場合の塁打数（0～4）
+  + contact_made : BOOLEAN // コンタクト成立有無
+  + pitcher_hand : VARCHAR(10) // 使用した腕（Left, Right, Both）
+  + batter_hand : VARCHAR(10) // 使用した腕（Left, Right, Both）
+  + pitch_count_in_inning : INT // イニング内投球番号
+  + pitch_count_in_game : INT // 試合内通算投球番号
+  + created_at : DATETIME // 作成日時
+  + updated_at : DATETIME // 更新日時
+}
+
+' PBP 1件につき PitchEvent は最大1（非投球PBPの場合は0）
+PlayByPlay "1" -- "0..1" PitchEvent : "triggers pitch event"
+
+class StealEvent {
+  + event_id : INT <<PK>> // 盗塁イベントの一意識別子
+  + pbp_id : INT <<FK>> // 関連するPlayByPlay ID
+  + runner_id : INT <<FK>> // 盗塁試行選手のID
+  + attempted_base : INT // 盗塁試行した塁（2=二塁, 3=三塁, 4=本塁）
+  + steal_success : BOOLEAN // 盗塁成功ならTRUE
+  + created_at : DATETIME // 作成日時
+  + updated_at : DATETIME // 更新日時
+}
+
+PlayByPlay "1" -- "0..*" StealEvent : "triggers steal event"
+
+class SubstitutionEvent {
+  + event_id : INT <<PK>> // 交代イベントの一意識別子
+  + pbp_id : INT <<FK>> // 関連するPlayByPlay ID
+  + from_position : VARCHAR(20) // 交代前のポジション（例: Infield, Outfield, Pitcher, Catcher, Bench）
+  + to_position : VARCHAR(20) // 交代後のポジション（例: Infield, Outfield, Pitcher, Catcher, Bench）
+  + player_id : INT <<FK>> // 交代対象の選手ID
+  + appearance_id : INT <<FK>> // 関連するPlayerGameAppearance ID
+  + created_at : DATETIME // 作成日時
+  + updated_at : DATETIME // 更新日時
+}
+' 途中出場のみ：イベント1件が“新規appearance”を起動
+PlayByPlay "1" -- "0..*" SubstitutionEvent : "triggers substitution event"
+SubstitutionEvent "1" --> "0..1" PlayerGameAppearance : "starts"
+
+class AdvancementEvent {
+  + event_id : INT <<PK>> // 進塁イベントの一意識別子
+  + pbp_id : INT <<FK>> // 関連するPlayByPlay ID
+  + player_id : INT <<FK>> // 進塁対象の選手ID
+  + from_base : INT // 進塁前の塁（例: 1=一塁）
+  + to_base : INT // 進塁後の塁（例: 2=二塁）
+  + created_at : DATETIME // 作成日時
+  + updated_at : DATETIME // 更新日時
+}
+
+PlayByPlay "1" -- "0..*" AdvancementEvent : "triggers advancement event"
+
+class ErrorEvent {
+  + event_id : INT <<PK>> // エラーイベントの一意識別子
+  + pbp_id : INT <<FK>> // 関連するPlayByPlay ID
+  + player_id : INT <<FK>> // エラーを犯した選手のID
+  + error_context : VARCHAR(50) // エラー状況（例: batted_ball, pickoff, throwing_error）
+  + defensive_position : VARCHAR(20) // エラー発生時の守備ポジション
+  + created_at : DATETIME // 作成日時
+  + updated_at : DATETIME // 更新日時
+}
+
+PlayByPlay "1" -- "0..*" ErrorEvent : "triggers error event"
+
+class OtherEvent {
+  + event_id : INT <<PK>> // その他イベントの一意識別子
+  + pbp_id : INT <<FK>> // 関連するPlayByPlay ID
+  + event_subtype : VARCHAR(50) // サブタイプ（例: balk, wild_pitch, passed_ball, interference）
+  + detail : VARCHAR(255) // 補足情報
+  + created_at : DATETIME // 作成日時
+  + updated_at : DATETIME // 更新日時
+}
+
+PlayByPlay "1" -- "0..*" OtherEvent : "triggers other events"
+
+' ==========================
+' 個人成績テーブル：打撃・投手統計の統合
+' ==========================
+class PlayerGameStats {
+  + stats_id : INT <<PK>> // 統計レコードの一意識別子
+  + game_id : INT <<FK>> // 試合ID
+  + player_id : INT <<FK>> // 選手ID
+  '--- Batting Stats ---
+  + AB : INT // 打席数 (At Bats)
+  + R : INT // 得点 (Runs)
+  + H : INT // 安打数 (Hits)
+  + doubles : INT // 二塁打数 (Doubles)
+  + triples : INT // 三塁打数 (Triples)
+  + HR : INT // 本塁打数 (Home Runs)
+  + RBI : INT // 打点 (Runs Batted In)
+  + SO : INT // 三振 (Strikeouts, batting)
+  + BB : INT // 四球 (Walks)
+  + HBP : INT // 死球 (Hit By Pitch)
+  + SacBunt : INT // 犠打 (Sacrifice Bunts)
+  + SacFly : INT // 犠飛 (Sacrifice Flies)
+  + SB : INT // 盗塁 (Stolen Bases)
+  + E : INT // 失策 (Errors)
+  '--- Pitching Stats ---
+  + IP : FLOAT // 投球回数 (Innings Pitched)
+  + Pitches : INT // 投球数 (Total Pitches)
+  + BF : INT // 対戦打者数 (Batters Faced)
+  + H_allowed : INT // 被安打数 (Hits Allowed)
+  + HR_allowed : INT // 被本塁打数 (Home Runs Allowed)
+  + K : INT // 奪三振 (Strikeouts, pitching)
+  + BB_given : INT // 与四球数 (Walks Given)
+  + HBP_given : INT // 与死球数 (Hit By Pitch Given)
+  + R_allowed : INT // 失点 (Runs Allowed)
+  + ER : INT // 自責点 (Earned Runs)
+  + W : INT // 勝利数 (Wins)
+  + L : INT // 敗戦数 (Losses)
+  + Holds : INT // ホールド数 (Holds)
+  + SV : INT // セーブ数 (Saves)
+  '--- Appearance ---
+  + outs_recorded : INT // 出場アウト数（PlayerGameAppearance集計値->3で除してInningsPlayedにする）
+  + created_at : DATETIME // 統計レコード作成日時
+  + updated_at : DATETIME // 統計レコード更新日時
+}
+
+Game "1" -- "0..*" PlayerGameStats : "has game stats"
+Player "1" -- "0..*" PlayerGameStats : "performance per game"
+
+' ==========================
+' UNIQUE 制約（複合）は note で明示
+' ==========================
+
+' PBPの通番（試合内での一意性を担保）
+note right of PlayByPlay
+  UNIQUE (game_id, inning, top_bottom, pbp_sequence)
+end note
+
+' 個人成績は試合×選手で一意
+note right of PlayerGameStats
+  UNIQUE (game_id, player_id)
+end note
+
+' 名前履歴は (player_id, name_type, effective_date) で一意
+note right of PlayerNameHistory
+  UNIQUE (player_id, name_type, effective_date)
+end note
+
+' クラブ在籍は期間重複をアプリ/ETLで検知（DBでの範囲制約は困難）
+note right of ClubMembership
+  -- 期間重複はアプリ/ETLで検知
+  -- 背番号の一意性を年度で担保するなら別途NumberHistoryも検討
+end note
+
+' PitchEvent は PBP 1件に最大1（FKに UNIQUE を張ると堅い）
+note right of PitchEvent
+  UNIQUE (pbp_id)
+end note
+
+' 出場記録の重複防止（同一試合・同一選手・同一開始イニングで一意）
+note right of PlayerGameAppearance
+  UNIQUE (game_id, player_id, start_inning)
+end note
+
+note right of SubstitutionEvent
+  -- 途中出場のみ起点となる
+  UNIQUE (appearance_id)
+end note
+
+@enduml
