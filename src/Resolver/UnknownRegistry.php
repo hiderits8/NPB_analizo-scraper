@@ -2,62 +2,74 @@
 
 namespace App\Resolver;
 
+/**
+ * 未解決エイリアスのキューを JSON Lines で蓄積する。
+ * 出力先は APP_PENDING_DIR（既定: ./logs/pending_aliases）
+ */
 final class UnknownRegistry
 {
-    /**
-     * コンストラクタ
-     * 
-     * @param string $dir 登録先ディレクトリ(/data/pending_aliases を予定)
-     */
-    public function __construct(private string $dir)
-    {
-        $this->dir = rtrim($dir, '/');
-        if (!is_dir($this->dir)) {
-            @mkdir($this->dir, 0777, true);
+    private string $baseDir;
+
+    public function __construct(
+        private readonly string $projectRoot,
+        ?string $baseDir = null,
+    ) {
+        $rel = $baseDir ?? (getenv('APP_PENDING_DIR') ?: 'logs/pending_aliases');
+        $this->baseDir = $this->resolvePath($rel);
+        if (!is_dir($this->baseDir)) {
+            mkdir($this->baseDir, 0777, true);
         }
     }
 
     /**
-     * 登録処理
-     * 
-     * @param string $domain ドメイン(team_name / stadium_name / club_name)
-     * @param string $raw
-     * @param array{url?: string, level?:string, page_date?:string} $ctx
+     * 1件記録
+     * @param string $category 例: 'stadium','club','team' など
+     * @param string $raw      生テキスト
+     * @param array  $context  例: ['url'=>..., 'page_hint'=>..., 'level'=>'First'|'Farm']
      */
-    public function record(string $domain, string $raw, array $ctx = []): void
+    public function record(string $category, string $raw, array $context = []): void
     {
-        $path = "{$this->dir}/{$domain}.json";
-        $list = file_exists($path) ? (json_decode((string)file_get_contents($path), true) ?: []) : [];
+        $line = [
+            'ts' => (new \DateTimeImmutable('now'))->format(DATE_ATOM),
+            'category' => $category,
+            'raw' => $raw,
+            'context' => $context,
+        ];
 
-        $key = $this->keyize($raw);
-        if (!isset($list[$key])) {
-            $list[$key] = [
-                'raw'        => $raw,
-                'first_seen' => gmdate('c'),
-                'seen'       => 1,
-                'samples'    => [$ctx],
-            ];
-        } else {
-            $list[$key]['seen'] = (int)($list[$key]['seen'] ?? 0) + 1;
-            $samples = $list[$key]['samples'] ?? [];
-            $samples[] = $ctx;
-            $list[$key]['samples'] = array_slice($samples, -5); // 最新5件だけ保持
+        $file = $this->baseDir . DIRECTORY_SEPARATOR . $this->fileNameFor($category, $context);
+        $fp = fopen($file, 'ab');
+        if ($fp === false) {
+            throw new \RuntimeException("Cannot open pending file: {$file}");
         }
-
-        file_put_contents($path, json_encode($list, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        flock($fp, LOCK_EX);
+        fwrite($fp, json_encode($line, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . PHP_EOL);
+        flock($fp, LOCK_UN);
+        fclose($fp);
     }
 
-    /**
-     * キー化
-     * 
-     * @param string $s
-     * @return string
-     */
-    private function keyize(string $s): string
+    private function fileNameFor(string $category, array $context): string
     {
-        $s = trim($s);
-        $s = preg_replace('/\s+/u', ' ', $s) ?? $s;
-        $s = preg_replace('/[\x{200B}-\x{200D}\x{FEFF}]/u', '', $s) ?? $s;
-        return mb_strtolower($s, 'UTF-8');
+        // 規約: stadiums.jsonl / teams_first.jsonl / teams_farm.jsonl / clubs.jsonl / その他は <category>.jsonl
+        return match ($category) {
+            'stadiums' => 'stadiums.jsonl',
+            'club'    => 'clubs.jsonl',
+            'team'    => 'teams_' . (strtolower((string)($context['level'] ?? ''))) . '.jsonl',
+            default => $category . '.jsonl',
+        };
+    }
+
+    private function resolvePath(string $path): string
+    {
+        if ($this->isAbsolutePath($path)) {
+            return $path;
+        }
+        return rtrim($this->projectRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . ltrim($path, DIRECTORY_SEPARATOR);
+    }
+
+    private function isAbsolutePath(string $path): bool
+    {
+        return str_starts_with($path, DIRECTORY_SEPARATOR)
+            || preg_match('#^[A-Za-z]:[\\\\/]#', $path) === 1
+            || str_starts_with($path, 'phar://');
     }
 }

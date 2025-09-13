@@ -8,12 +8,17 @@ use App\Http\DictClient;
 use App\Resolver\Resolver;
 use App\Resolver\AliasNormalizer;
 use App\Scrape\GameMetaScraper;
+use App\Resolver\AliasesLoader;
 use App\Resolver\UnknownRegistry;
 use GuzzleHttp\Client;
 use Dotenv\Dotenv;
 
-$dotenv = Dotenv::createUnsafeImmutable(dirname(__DIR__));
-$dotenv->safeload();
+$root = \dirname(__DIR__);
+
+// .env 読み込み（存在すれば）
+if (class_exists(Dotenv::class)) {
+    Dotenv::createImmutable($root)->safeLoad();
+}
 
 $apiBase = $_ENV['APP_API_BASE'];
 $apiTimeout = (int)$_ENV['APP_API_TIMEOUT'];
@@ -32,7 +37,8 @@ $stadiums = $dict->stadiums();
 $clubs = $dict->clubs();
 
 // 2) Resolver 準備（同義語辞書）
-$aliases = require dirname(__DIR__) . '/data/aliases.php';
+$aliasesLoader = new AliasesLoader($root);
+$aliases = $aliasesLoader->load();
 $resolver = new Resolver($teams, $stadiums, $clubs, new AliasNormalizer($aliases));
 
 // 3) 実ページをスクレイプ
@@ -41,7 +47,7 @@ try {
     $scraper = new GameMetaScraper($http, $resolver);
     $result = $scraper->scrape($url, $pageLevel);
 } catch (Throwable $e) {
-    $logDir = dirname(__DIR__) . '/logs';
+    $logDir = $root . '/logs';
     if (!is_dir($logDir)) mkdir($logDir, 0777, true);
     $line = sprintf("[%s] url=%s ERROR=%s\n", date('c'), $url, $e->getMessage());
     file_put_contents($logDir . '/error.log', $line, FILE_APPEND);
@@ -52,20 +58,20 @@ try {
 }
 
 // 4) 未解決をリストに保存
-$reg = new UnknownRegistry(dirname(__DIR__) . '/data/pending_aliases');
+$unknown = new UnknownRegistry($root);
 
 if (($result['home_team_id'] ?? null) === null && !empty($result['home_team_raw'])) {
-    $reg->record($pageLevel === 'First' ? 'teams_first' : 'teams_farm', $result['home_team_raw'], ['url' => $url, 'level' => $pageLevel, 'page_date' => $result['date_label']]);
+    $unknown->record($pageLevel === 'First' ? 'teams_first' : 'teams_farm', $result['home_team_raw'], ['url' => $url, 'level' => $pageLevel, 'page_date' => $result['date']]);
 }
 if (($result['away_team_id'] ?? null) === null && !empty($result['away_team_raw'])) {
-    $reg->record($pageLevel === 'First' ? 'teams_first' : 'teams_farm', $result['away_team_raw'], ['url' => $url, 'level' => $pageLevel, 'page_date' => $result['date_label']]);
+    $unknown->record($pageLevel === 'First' ? 'teams_first' : 'teams_farm', $result['away_team_raw'], ['url' => $url, 'level' => $pageLevel, 'page_date' => $result['date']]);
 }
 if (($result['stadium_id'] ?? null) === null && !empty($result['stadium_raw'])) {
-    $reg->record('stadiums', $result['stadium_raw'], ['url' => $url, 'page_date' => $result['date_label']]);
+    $unknown->record('stadiums', $result['stadium_raw'], ['url' => $url, 'page_date' => $result['date']]);
 }
 
 // 5) 出力と未解決ログ
-$logDir = dirname(__DIR__) . '/logs';
+$logDir = $root . '/logs';
 if (!is_dir($logDir)) mkdir($logDir, 0777, true);
 
 // $result が配列か最低限のキーを持つかガード
@@ -79,33 +85,42 @@ if (!is_array($result)) {
     exit(1);
 }
 
-// 未解決推定（キーが無い or null を未解決とみなす）
-$unresolved = $result['unresolved'] ?? [];
+// --- 未解決の標準化（表示用） ----------------------------
+// 1) unresolved_keys: scraper の raw 値配列 + 欠落ID名（重複排除）
+$unresolvedKeys = $result['unresolved'] ?? []; // ← scraper 由来（raw 値のみ）
 foreach (['home_team_id', 'away_team_id', 'stadium_id'] as $k) {
     if (!array_key_exists($k, $result) || $result[$k] === null) {
-        $unresolved[] = $k;
+        $unresolvedKeys[] = $k;
     }
 }
-$unresolved = array_values(array_unique($unresolved));
+$unresolvedKeys = array_values(array_unique(array_filter($unresolvedKeys, fn($v) => $v !== null && $v !== '')));
 
-// 常にサマリを標準出力
-fwrite(STDOUT, sprintf(
-    "OK url=%s level=%s home=%s away=%s stadium=%s unresolved=%d\n",
-    $result['url'] ?? $url,
-    $pageLevel,
-    $result['home_team_id'] ?? 'null',
-    $result['away_team_id'] ?? 'null',
-    $result['stadium_id']   ?? 'null',
-    count($unresolved)
-));
+// 2) unresolved(JSON): key→raw の連想
+$unresolvedMap = $result['unresolved_map'] ?? [];
+if (empty($unresolvedMap)) {
+    $tmp = [
+        'stadium'   => [$result['stadium_id']   ?? null, $result['stadium_raw']    ?? null],
+        'home_team' => [$result['home_team_id'] ?? null, $result['home_team_raw']  ?? null],
+        'away_team' => [$result['away_team_id'] ?? null, $result['away_team_raw']  ?? null],
+    ];
+    foreach ($tmp as $k => [$id, $raw]) {
+        if ($id === null && !empty($raw)) {
+            $unresolvedMap[$k] = $raw;
+        }
+    }
+}
 
-// 未解決があればログへ追記
-if (!empty($unresolved)) {
-    $line = sprintf(
-        "[%s] url=%s unresolved=%s\n",
-        date('c'),
-        $result['url'] ?? $url,
-        json_encode($unresolved, JSON_UNESCAPED_UNICODE)
-    );
-    file_put_contents($logDir . '/unresolved.txt', $line, FILE_APPEND);
+$summary = [
+    'OK',
+    'url=' . ($result['url'] ?? $url),
+    'level=' . $pageLevel,
+    'home=' . ($result['home_team_id'] ?? 'null'),
+    'away=' . ($result['away_team_id'] ?? 'null'),
+    'stadium=' . ($result['stadium_id'] ?? 'null'),
+];
+fwrite(STDOUT, implode(PHP_EOL, $summary) . PHP_EOL . PHP_EOL);
+
+// 未解決の内訳
+if (!empty($unresolvedMap)) {
+    fwrite(STDOUT, 'unresolved=' . json_encode($unresolvedMap, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . PHP_EOL);
 }

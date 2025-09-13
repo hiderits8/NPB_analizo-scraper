@@ -8,6 +8,8 @@ final class AliasesLoader
 {
     private ?array $cache = null;
 
+    private string $baseFile;
+    private string $localFile;
 
     /**
      * @param string $projectRoot プロジェクトルート
@@ -16,14 +18,16 @@ final class AliasesLoader
      */
     public function __construct(
         private readonly string $projectRoot,
-        private readonly string $baseFile,
-        private readonly string $loadFile,
-    ) {}
+        ?string $baseFile  = null,
+        ?string $localFile = null,
+    ) {
+        $this->baseFile  = $this->resolvePath($baseFile  ?? (getenv('APP_ALIAS_BASE_FILE')  ?: 'data/aliases.php'));
+        $this->localFile = $this->resolvePath($localFile ?? (getenv('APP_ALIAS_LOCAL_FILE') ?: 'data/aliases.local.php'));
+    }
 
     /**
-     * ロード
      * キャッシュがあればそれを返す
-     * なければベースファイルにロードファイルを上書きして辞書を返す（キャッシュに保存）
+     * なければ上位優先（local が base を上書き）で再帰マージした辞書を返す
      * 
      * @return array<string, mixed>
      */
@@ -33,8 +37,8 @@ final class AliasesLoader
             return $this->cache;
         }
 
-        $base = $this->safeRequire($this->path($this->baseFile));
-        $local = $this->safeRequire($this->path($this->loadFile));
+        $base = $this->safeRequire($this->resolvePath($this->baseFile));
+        $local = $this->safeRequire($this->resolvePath($this->localFile));
 
         return $this->cache = $this->mergeAssocRecursive($base, $local);
     }
@@ -62,13 +66,26 @@ final class AliasesLoader
     }
 
     /**
-     * キャッシュをクリア
-     * 
-     * 登録直後に再読み込みする時用
+     * キャッシュクリア（登録直後に再読み込みしたい場合）
      */
     public function cacheClear(): void
     {
         $this->cache = null;
+    }
+
+    private function resolvePath(string $path): string
+    {
+        if ($this->isAbsolutePath($path)) {
+            return $path;
+        }
+        return rtrim($this->projectRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . ltrim($path, DIRECTORY_SEPARATOR);
+    }
+
+    private function isAbsolutePath(string $path): bool
+    {
+        return str_starts_with($path, DIRECTORY_SEPARATOR)
+            || preg_match('#^[A-Za-z]:[\\\\/]#', $path) === 1
+            || str_starts_with($path, 'phar://');
     }
 
     /**
@@ -85,24 +102,11 @@ final class AliasesLoader
         if (!file_exists($file)) {
             return [];
         }
-
         $data = require $file;
         if (!is_array($data)) {
             throw new \RuntimeException(sprintf('Alias file must return array: %s', $file));
         }
-
         return $data;
-    }
-
-    /**
-     * 相対パスを絶対パスに変換
-     * 
-     * @param string $relative 相対パス
-     * @return string 絶対パス
-     */
-    private function path(string $relative): string
-    {
-        return rtrim($this->projectRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $relative;
     }
 
     /**
