@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Resolver;
 
+use App\Util\Path;
+
 final class AliasesLoader
 {
     private ?array $cache = null;
@@ -21,8 +23,8 @@ final class AliasesLoader
         ?string $baseFile  = null,
         ?string $localFile = null,
     ) {
-        $this->baseFile  = $this->resolvePath($baseFile  ?? (getenv('APP_ALIAS_BASE_FILE')  ?: 'data/aliases.php'));
-        $this->localFile = $this->resolvePath($localFile ?? (getenv('APP_ALIAS_LOCAL_FILE') ?: 'data/aliases.local.php'));
+        $this->baseFile  = Path::resolve($projectRoot, $baseFile  ?? (getenv('APP_ALIAS_BASE_FILE')  ?: 'data/aliases.php'));
+        $this->localFile = Path::resolve($projectRoot, $localFile ?? (getenv('APP_ALIAS_LOCAL_FILE') ?: 'data/aliases.local.php'));
     }
 
     /**
@@ -37,8 +39,8 @@ final class AliasesLoader
             return $this->cache;
         }
 
-        $base = $this->safeRequire($this->resolvePath($this->baseFile));
-        $local = $this->safeRequire($this->resolvePath($this->localFile));
+        $base = $this->safeRequire(Path::resolve($this->projectRoot, $this->baseFile));
+        $local = $this->safeRequire(Path::resolve($this->projectRoot, $this->localFile));
 
         return $this->cache = $this->mergeAssocRecursive($base, $local);
     }
@@ -71,21 +73,6 @@ final class AliasesLoader
     public function cacheClear(): void
     {
         $this->cache = null;
-    }
-
-    private function resolvePath(string $path): string
-    {
-        if ($this->isAbsolutePath($path)) {
-            return $path;
-        }
-        return rtrim($this->projectRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . ltrim($path, DIRECTORY_SEPARATOR);
-    }
-
-    private function isAbsolutePath(string $path): bool
-    {
-        return str_starts_with($path, DIRECTORY_SEPARATOR)
-            || preg_match('#^[A-Za-z]:[\\\\/]#', $path) === 1
-            || str_starts_with($path, 'phar://');
     }
 
     /**

@@ -2,6 +2,9 @@
 
 namespace App\Resolver;
 
+use App\Util\Path;
+use App\Util\Json;
+
 /**
  * 未解決エイリアスのキューを JSON Lines で蓄積する。
  * 出力先は APP_PENDING_DIR（既定: ./logs/pending_aliases）
@@ -15,7 +18,7 @@ final class UnknownRegistry
         ?string $baseDir = null,
     ) {
         $rel = $baseDir ?? (getenv('APP_PENDING_DIR') ?: 'logs/pending_aliases');
-        $this->baseDir = $this->resolvePath($rel);
+        $this->baseDir = Path::resolve($projectRoot, $rel);
         if (!is_dir($this->baseDir)) {
             mkdir($this->baseDir, 0777, true);
         }
@@ -42,7 +45,7 @@ final class UnknownRegistry
             throw new \RuntimeException("Cannot open pending file: {$file}");
         }
         flock($fp, LOCK_EX);
-        fwrite($fp, json_encode($line, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . PHP_EOL);
+        fwrite($fp, Json::encode($line) . PHP_EOL);
         flock($fp, LOCK_UN);
         fclose($fp);
     }
@@ -56,20 +59,5 @@ final class UnknownRegistry
             'team'    => 'teams_' . (strtolower((string)($context['level'] ?? ''))) . '.jsonl',
             default => $category . '.jsonl',
         };
-    }
-
-    private function resolvePath(string $path): string
-    {
-        if ($this->isAbsolutePath($path)) {
-            return $path;
-        }
-        return rtrim($this->projectRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . ltrim($path, DIRECTORY_SEPARATOR);
-    }
-
-    private function isAbsolutePath(string $path): bool
-    {
-        return str_starts_with($path, DIRECTORY_SEPARATOR)
-            || preg_match('#^[A-Za-z]:[\\\\/]#', $path) === 1
-            || str_starts_with($path, 'phar://');
     }
 }

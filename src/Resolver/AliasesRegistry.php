@@ -2,6 +2,9 @@
 
 namespace App\Resolver;
 
+use App\Util\Path;
+use App\Util\Json;
+
 final class AliasesRegistry
 {
 
@@ -13,8 +16,8 @@ final class AliasesRegistry
         ?string $localFile = null,
         ?string $logFile   = null,
     ) {
-        $this->localFile = $this->resolvePath($localFile ?? (getenv('APP_ALIAS_LOCAL_FILE') ?: 'data/aliases.local.php'));
-        $this->logFile   = $this->resolvePath($logFile   ?? (getenv('APP_ALIAS_REG_LOG')   ?: 'logs/alias_registrations.log'));
+        $this->localFile = Path::resolve($projectRoot, $localFile ?? (getenv('APP_ALIAS_LOCAL_FILE') ?: 'data/aliases.local.php'));
+        $this->logFile   = Path::resolve($projectRoot, $logFile   ?? (getenv('APP_ALIAS_REG_LOG')   ?: 'logs/alias_registrations.log'));
     }
 
     /**
@@ -58,21 +61,6 @@ final class AliasesRegistry
         ] + $meta);
 
         return $result;
-    }
-
-    private function resolvePath(string $path): string
-    {
-        if ($this->isAbsolutePath($path)) {
-            return $path;
-        }
-        return rtrim($this->projectRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . ltrim($path, DIRECTORY_SEPARATOR);
-    }
-
-    private function isAbsolutePath(string $path): bool
-    {
-        return str_starts_with($path, DIRECTORY_SEPARATOR)
-            || preg_match('#^[A-Za-z]:[\\\\/]#', $path) === 1
-            || str_starts_with($path, 'phar://');
     }
 
     /**
@@ -130,7 +118,7 @@ final class AliasesRegistry
             throw new \RuntimeException("Cannot open log file: {$file}");
         }
         flock($fp, LOCK_EX);
-        fwrite($fp, json_encode($line, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . PHP_EOL);
+        fwrite($fp, Json::encode($line) . PHP_EOL);
         flock($fp, LOCK_UN);
         fclose($fp);
     }
