@@ -8,7 +8,7 @@ use GuzzleHttp\Exception\GuzzleException;
 /**
  * apiから辞書を取得するクラス
  * 
- * 
+ * 関数の戻り値がnullの場合は、辞書が取得できなかったということ
  */
 class DictClient
 {
