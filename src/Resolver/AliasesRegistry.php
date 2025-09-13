@@ -42,7 +42,7 @@ final class AliasesRegistry
 
         $exists = array_key_exists($raw, $dict[$category]);
 
-        if ($exists && $dict[$category] == $canonical) {
+        if ($exists && ($dict[$category][$raw] ?? null) === $canonical) {
             $result = 'noop';
         } elseif ($exists && !$overwrite) {
             $result = 'conflict';
