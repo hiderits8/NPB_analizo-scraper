@@ -9,118 +9,144 @@ use App\Resolver\Resolver;
 use App\Resolver\AliasNormalizer;
 use App\Scrape\GameMetaScraper;
 use App\Resolver\AliasesLoader;
-use App\Resolver\UnknownRegistry;
 use GuzzleHttp\Client;
 use Dotenv\Dotenv;
 
 $root = \dirname(__DIR__);
-
-// .env 読み込み（存在すれば）
 if (class_exists(Dotenv::class)) {
     Dotenv::createImmutable($root)->safeLoad();
 }
 
-$apiBase = $_ENV['APP_API_BASE'];
-$apiTimeout = (int)$_ENV['APP_API_TIMEOUT'];
+$APP_QUIET   = (getenv('APP_QUIET') ?: '1') === '1';
+$PENDING_DIR = $root . '/logs/pending_aliases';
+@mkdir($PENDING_DIR, 0777, true);
+@mkdir($PENDING_DIR . '/_resolved', 0777, true);
 
-$url = $argv[1] ?? null;
-$pageLevel = $argv[2] ?? null;
+$url       = $argv[1] ?? null;         // e.g. https://baseball.yahoo.co.jp/npb/game/.../top
+$pageLevel = $argv[2] ?? null;         // First | Farm
 if (!$url || !in_array($pageLevel, ['First', 'Farm'], true)) {
-    fwrite(STDERR, "Usage: php bin/scrape_one.php <game-url> <First|Farm>\n");
+    if (!$APP_QUIET) fwrite(STDERR, "Usage: php bin/scrape_one.php <game-url> <First|Farm>\n");
     exit(2);
 }
 
 // 1) API 辞書ロード
-$dict = new DictClient($apiBase, $apiTimeout);
-$teams = $dict->teams();
-$stadiums = $dict->stadiums();
-$clubs = $dict->clubs();
+$apiBase    = $_ENV['APP_API_BASE']    ?? '';
+$apiTimeout = (int)($_ENV['APP_API_TIMEOUT'] ?? 10);
 
-// 2) Resolver 準備（同義語辞書）
-$aliasesLoader = new AliasesLoader($root);
-$aliases = $aliasesLoader->load();
-$resolver = new Resolver($teams, $stadiums, $clubs, new AliasNormalizer($aliases));
-
-// 3) 実ページをスクレイプ
 try {
-    $http = new Client(['timeout' => 15]);
-    $scraper = new GameMetaScraper($http, $resolver);
-    $result = $scraper->scrape($url, $pageLevel);
-} catch (Throwable $e) {
+    $dict     = new DictClient($apiBase, $apiTimeout);
+    $teams    = $dict->teams();
+    $stadiums = $dict->stadiums();
+    $clubs    = $dict->clubs();
+} catch (\Throwable $e) {
+    if (!$APP_QUIET) fwrite(STDERR, "[error] dict load failed: {$e->getMessage()}\n");
+    exit(3);
+}
+
+// 2) エイリアスを使用したリゾルバ
+$aliases       = (new AliasesLoader($root))->load();
+$resolver      = new Resolver($teams, $stadiums, $clubs, new AliasNormalizer($aliases));
+
+// 3) スクレイプ
+try {
+    $scraper = new GameMetaScraper(new Client(['timeout' => 15]), $resolver);
+    /** @var array $result */
+    $result  = $scraper->scrape($url, $pageLevel);
+} catch (\Throwable $e) {
+    // エラーログを保存
     $logDir = $root . '/logs';
     if (!is_dir($logDir)) mkdir($logDir, 0777, true);
-    $line = sprintf("[%s] url=%s ERROR=%s\n", date('c'), $url, $e->getMessage());
-    file_put_contents($logDir . '/error.log', $line, FILE_APPEND);
-    throw $e;
-    // ここで終了（継続したければ return に変更）
-    fwrite(STDERR, "ERROR: {$e->getMessage()}\n");
-    exit(1);
+    file_put_contents($logDir . '/error.log', sprintf('[%s] url=%s ERROR=%s\n', date('c'), $url, $e->getMessage()), FILE_APPEND);
+    if (!$APP_QUIET) fwrite(STDERR, "ERROR: {$e->getMessage()}\n");
+    exit(3);
 }
 
-// 4) 未解決をリストに保存
-$unknown = new UnknownRegistry($root);
-
-if (($result['home_team_id'] ?? null) === null && !empty($result['home_team_raw'])) {
-    $unknown->record($pageLevel === 'First' ? 'teams_first' : 'teams_farm', $result['home_team_raw'], ['url' => $url, 'level' => $pageLevel, 'page_date' => $result['date']]);
-}
-if (($result['away_team_id'] ?? null) === null && !empty($result['away_team_raw'])) {
-    $unknown->record($pageLevel === 'First' ? 'teams_first' : 'teams_farm', $result['away_team_raw'], ['url' => $url, 'level' => $pageLevel, 'page_date' => $result['date']]);
-}
-if (($result['stadium_id'] ?? null) === null && !empty($result['stadium_raw'])) {
-    $unknown->record('stadiums', $result['stadium_raw'], ['url' => $url, 'page_date' => $result['date']]);
-}
-
-// 5) 出力と未解決ログ
-$logDir = $root . '/logs';
-if (!is_dir($logDir)) mkdir($logDir, 0777, true);
-
-// $result が配列か最低限のキーを持つかガード
-if (!is_array($result)) {
-    file_put_contents(
-        $logDir . '/error.log',
-        sprintf("[%s] url=%s ERROR=Result is not array\n", date('c'), $url),
-        FILE_APPEND
-    );
-    fwrite(STDERR, "ERROR: result is not array\n");
-    exit(1);
-}
-
-// --- 未解決の標準化（表示用） ----------------------------
-// 1) unresolved_keys: scraper の raw 値配列 + 欠落ID名（重複排除）
-$unresolvedKeys = $result['unresolved'] ?? []; // ← scraper 由来（raw 値のみ）
-foreach (['home_team_id', 'away_team_id', 'stadium_id'] as $k) {
-    if (!array_key_exists($k, $result) || $result[$k] === null) {
-        $unresolvedKeys[] = $k;
-    }
-}
-$unresolvedKeys = array_values(array_unique(array_filter($unresolvedKeys, fn($v) => $v !== null && $v !== '')));
-
-// 2) unresolved(JSON): key→raw の連想
+// 4) 未解決マップを作成 (スクレイパーが提供しない場合のフォールバック)
 $unresolvedMap = $result['unresolved_map'] ?? [];
 if (empty($unresolvedMap)) {
-    $tmp = [
-        'stadium'   => [$result['stadium_id']   ?? null, $result['stadium_raw']    ?? null],
-        'home_team' => [$result['home_team_id'] ?? null, $result['home_team_raw']  ?? null],
-        'away_team' => [$result['away_team_id'] ?? null, $result['away_team_raw']  ?? null],
+    $pairs = [
+        'stadium'   => [$result['stadium_id']   ?? null, $result['stadium_raw']   ?? null],
+        'home_team' => [$result['home_team_id'] ?? null, $result['home_team_raw'] ?? null],
+        'away_team' => [$result['away_team_id'] ?? null, $result['away_team_raw'] ?? null],
+        'club'      => [$result['club_id']      ?? null, $result['club_raw']      ?? null],
     ];
-    foreach ($tmp as $k => [$id, $raw]) {
-        if ($id === null && !empty($raw)) {
-            $unresolvedMap[$k] = $raw;
-        }
+    foreach ($pairs as $k => [$id, $raw]) {
+        // (IDがnullで、rawが文字列で、空でない場合) 未解決マップに追加
+        if ($id === null && is_string($raw) && $raw !== '') $unresolvedMap[$k] = $raw;
     }
 }
 
-$summary = [
-    'OK',
-    'url=' . ($result['url'] ?? $url),
-    'level=' . $pageLevel,
-    'home=' . ($result['home_team_id'] ?? 'null'),
-    'away=' . ($result['away_team_id'] ?? 'null'),
-    'stadium=' . ($result['stadium_id'] ?? 'null'),
-];
-fwrite(STDOUT, implode(PHP_EOL, $summary) . PHP_EOL . PHP_EOL);
+// 5) 辞書カテゴリにマップ
+// チームは First|Farm によって異なる
+$catTeam  = ($pageLevel === 'Farm') ? 'teams_farm' : 'teams_first';
+// 未解決マップのキーを辞書カテゴリにマップ
+$keyToCat = ['stadium' => 'stadiums', 'home_team' => $catTeam, 'away_team' => $catTeam, 'club' => 'clubs'];
 
-// 未解決の内訳
-if (!empty($unresolvedMap)) {
-    fwrite(STDOUT, 'unresolved=' . json_encode($unresolvedMap, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . PHP_EOL);
+// 辞書カテゴリごとに未解決マップを作成 (例: ['stadiums' => ['甲子園' => true], 'teams_first' => ['阪神' => true, '広島' => true]])
+$catWise = [];
+foreach ($unresolvedMap as $key => $raw) {
+    $cat = $keyToCat[$key] ?? null;
+    if ($cat === null) continue;
+    $catWise[$cat][(string)$raw] = true; // true は重複を避けるためのダミー
 }
+
+// 6) ゲート & ロギング (未解決)
+if (!empty($catWise)) {
+    foreach ($catWise as $cat => $rawSet) {
+        $file = $PENDING_DIR . '/' . $cat . '.jsonl';
+        foreach (array_keys($rawSet) as $raw) {
+            $row = [
+                'ts'       => date('c'),
+                'event'    => 'game_unresolved',
+                'url'      => $url,
+                'level'    => $pageLevel,
+                'category' => $cat,
+                'raw'      => $raw,
+            ];
+            file_put_contents($file, json_encode($row, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . PHP_EOL, FILE_APPEND | LOCK_EX);
+        }
+    }
+
+    $eventFile = $PENDING_DIR . '/events.jsonl';
+    $gameEvent = [
+        'ts'        => date('c'),
+        'event'     => 'game_skipped_unresolved',
+        'url'       => $url,
+        'level'     => $pageLevel,
+        'unresolved' => array_map(fn($set) => array_keys($set), $catWise), // 未解決マップのキーを取得
+    ];
+    file_put_contents($eventFile, json_encode($gameEvent, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . PHP_EOL, FILE_APPEND | LOCK_EX);
+
+    // ロギング (未解決)
+    if (!$APP_QUIET) {
+        $summary = [
+            'OK',
+            'url=' . ($result['url'] ?? $url),
+            'level=' . $pageLevel,
+            'home=' . ($result['home_team_id'] ?? 'null'),
+            'away=' . ($result['away_team_id'] ?? 'null'),
+            'stadium=' . ($result['stadium_id'] ?? 'null'),
+        ];
+        fwrite(STDOUT, implode(PHP_EOL, $summary) . PHP_EOL . PHP_EOL);
+        fwrite(STDOUT, 'unresolved=' . json_encode($gameEvent['unresolved'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . PHP_EOL);
+        fwrite(STDOUT, "db_write=skip (unresolved)\n");
+    }
+    exit(2);
+}
+
+// 7) ロギング (正常終了)
+if (!$APP_QUIET) {
+    $summary = [
+        'OK',
+        'url=' . ($result['url'] ?? $url),
+        'level=' . $pageLevel,
+        'home=' . ($result['home_team_id'] ?? 'null'),
+        'away=' . ($result['away_team_id'] ?? 'null'),
+        'stadium=' . ($result['stadium_id'] ?? 'null'),
+    ];
+    fwrite(STDOUT, implode(PHP_EOL, $summary) . PHP_EOL . PHP_EOL);
+    fwrite(STDOUT, 'unresolved={}' . PHP_EOL);
+    fwrite(STDOUT, "db_write=ok\n");
+}
+
+exit(0);
