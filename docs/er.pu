@@ -121,8 +121,7 @@ class PlayerGameAppearance {
   + position : VARCHAR(20) // 出場ポジション（例: Pitcher, Catcher, Infield, Outfield）
   + start_inning : INT // 出場開始イニング（例: スタメンなら1）
   + end_inning : INT // 出場終了イニング（交代があればそのイニング、無ければ最終イニング）
-  + outs_recoreded : INT // 出場アウト数（PlayerGameAppearance集計値->3で除してInningsPlayedにする）
-  + roster_id : INT <<FK>> // 所属情報ID（Rosterテーブルの参照）
+  + outs_recorded : INT // 出場アウト数（PlayerGameAppearance集計値->3で除してInningsPlayedにする）
   + created_at : DATETIME // 作成日時
   + updated_at : DATETIME // 更新日時
 }
