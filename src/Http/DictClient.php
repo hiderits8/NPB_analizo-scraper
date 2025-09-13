@@ -5,6 +5,11 @@ namespace App\Http;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 
+/**
+ * apiから辞書を取得するクラス
+ * 
+ * 関数の戻り値がnullの場合は、辞書が取得できなかったということ
+ */
 class DictClient
 {
     private Client $http;
@@ -23,7 +28,7 @@ class DictClient
     }
 
     /**
-     * @return array<string, mixed>
+     * @return array<string, mixed> ('team_id', 'team_name', 'league', 'level', 'club_id')
      */
     public function teams(): array
     {
@@ -32,7 +37,7 @@ class DictClient
     }
 
     /**
-     * @return array<string, mixed>
+     * @return array<string, mixed> ('stadium_id', 'stadium_name', 'is_dome')
      */
     public function stadiums(): array
     {
@@ -41,7 +46,7 @@ class DictClient
     }
 
     /**
-     * @return array<string, mixed>
+     * @return array<string, mixed> ('club_id', 'club_name')
      */
     public function clubs(): array
     {
