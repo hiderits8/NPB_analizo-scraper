@@ -50,6 +50,12 @@ final class UnknownRegistry
         fclose($fp);
     }
 
+    /**
+     * ファイル名を生成
+     * @param string $category
+     * @param array $context
+     * @return string
+     */
     private function fileNameFor(string $category, array $context): string
     {
         // 規約: stadiums.jsonl / teams_first.jsonl / teams_farm.jsonl / clubs.jsonl / その他は <category>.jsonl

@@ -39,10 +39,38 @@ final class AliasesLoader
             return $this->cache;
         }
 
-        $base = $this->safeRequire(Path::resolve($this->projectRoot, $this->baseFile));
-        $local = $this->safeRequire(Path::resolve($this->projectRoot, $this->localFile));
+        $base = $this->safeRequire($this->baseFile);
+        $local = $this->safeRequire($this->localFile);
 
         return $this->cache = $this->mergeAssocRecursive($base, $local);
+    }
+
+
+    /**
+     * 基本辞書（aliases.php）のみを読み込む（ランタイム推奨）
+     * @return array<string,mixed>
+     */
+    public function loadBase(): array
+    {
+        return $this->safeRequire($this->baseFile);
+    }
+
+    /**
+     * ローカル辞書（aliases.local.php）のみを読み込む（レビュー用）
+     * @return array<string,mixed>
+     */
+    public function loadLocal(): array
+    {
+        return $this->safeRequire($this->localFile);
+    }
+
+    /**
+     * 上位優先でマージ（local が base を上書き）。管理系でのみ使用。
+     * @return array<string,mixed>
+     */
+    public function loadMerged(): array
+    {
+        return $this->mergeAssocRecursive($this->loadBase(), $this->loadLocal());
     }
 
     /**

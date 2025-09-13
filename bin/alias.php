@@ -260,6 +260,7 @@ Notes:
 - 未解決ログ: logs/pending_aliases/<category>.jsonl
 - 解消印:     logs/pending_aliases/_resolved/<category>.jsonl
 - 監査ログ:   logs/alias_registrations.log
+
 TXT;
 
 exit(0);

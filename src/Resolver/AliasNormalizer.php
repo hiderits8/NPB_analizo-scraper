@@ -2,6 +2,11 @@
 
 namespace App\Resolver;
 
+/**
+ * 別名をdata/aliases.phpから正規化するクラス
+ * 
+ * 関数の戻り値がnullの場合は、正規化が失敗したということ
+ */
 final class AliasNormalizer
 {
 
@@ -17,68 +22,54 @@ final class AliasNormalizer
         $this->aliases = $aliases;
     }
 
-    public function normalizeTeamFirst(string $raw): string
+    public function normalizeTeamFirst(string $raw): ?string
     {
         return $this->normalizeBy('teams_first', $raw);
     }
 
-    public function normalizeTeamFarm(string $raw): string
+    public function normalizeTeamFarm(string $raw): ?string
     {
         return $this->normalizeBy('teams_farm', $raw);
     }
 
-    public function normalizeStadium(string $raw): string
+    public function normalizeStadium(string $raw): ?string
     {
         return $this->normalizeBy('stadiums', $raw);
     }
 
-    public function normalizeClub(string $raw): string
+    public function normalizeClub(string $raw): ?string
     {
         return $this->normalizeBy('clubs', $raw);
     }
 
-    private function normalizeBy(string $domain, string $raw): string
+    /**
+     * 関数の戻り値がnullの場合は、正規化が失敗したということ
+     * 
+     * @param string $category
+     * @return string|null
+     */
+    private function normalizeBy(string $category, string $raw): ?string
     {
         $needle = $this->keyize($raw);
-        $map = $this->aliases[$domain] ?? [];
+        $map = $this->aliases[$category] ?? [];
 
         // 完全一致（鍵＝表記ゆれ）→ 正規名
         if (isset($map[$needle])) {
             return $map[$needle];
         }
 
-        // 軽い正規化
-        $soft = $this->softNorm($raw);
-
-        // 別名キーにも soft をかけた比較（ざっくり同一視）
-        foreach ($map as $aliasKey => $canonical) {
-            if ($this->softNorm($aliasKey) === $soft) {
-                return $canonical;
-            }
-        }
-
-        return $raw;
+        return null;
     }
 
+    /**
+     * 正規化前の文字列をキーにする
+     * @param string $s
+     * @return string
+     */
     private function keyize(string $s): string
     {
         $s = trim($s);
         $s = preg_replace('/\s+/u', ' ', $s) ?? $s;
-        return $s;
-    }
-
-    private function softNorm(string $s): string
-    {
-        $s = trim($s);
-        $s = preg_replace('/\s+/u', ' ', $s) ?? $s;
-        // ゼロ幅スペース除去
-        $s = preg_replace('/[\x{200B}-\x{200D}\x{FEFF}]/u', '', $s) ?? $s;
-        // 丸括弧・全角括弧内の付記（例: （一軍）, (ファーム) など）を除去
-        $s = preg_replace('/[（(].*?[)）]/u', '', $s) ?? $s;
-        // 記号をざっくり除去（・やハイフン等）
-        $s = preg_replace('/[・\-－—_]/u', '', $s) ?? $s;
-        // “軍”の除去（例: 一軍/二軍 の語尾だけ落とす軽い処理）
-        $s = preg_replace('/軍/u', '', $s) ?? $s;
         return $s;
     }
 }

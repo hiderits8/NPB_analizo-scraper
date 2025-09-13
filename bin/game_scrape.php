@@ -17,7 +17,7 @@ if (class_exists(Dotenv::class)) {
     Dotenv::createImmutable($root)->safeLoad();
 }
 
-$APP_QUIET   = (getenv('APP_QUIET') ?: '1') === '1';
+$APP_QUIET   = getenv('APP_QUIET');
 $PENDING_DIR = $root . '/logs/pending_aliases';
 @mkdir($PENDING_DIR, 0777, true);
 @mkdir($PENDING_DIR . '/_resolved', 0777, true);
@@ -44,7 +44,7 @@ try {
 }
 
 // 2) エイリアスを使用したリゾルバ
-$aliases       = (new AliasesLoader($root))->load();
+$aliases       = (new AliasesLoader($root))->loadBase();
 $resolver      = new Resolver($teams, $stadiums, $clubs, new AliasNormalizer($aliases));
 
 // 3) スクレイプ
@@ -63,11 +63,12 @@ try {
 
 // 4) 未解決マップを作成 (スクレイパーが提供しない場合のフォールバック)
 $unresolvedMap = $result['unresolved_map'] ?? [];
+
 if (empty($unresolvedMap)) {
     $pairs = [
-        'stadium'   => [$result['stadium_id']   ?? null, $result['stadium_raw']   ?? null],
-        'home_team' => [$result['home_team_id'] ?? null, $result['home_team_raw'] ?? null],
-        'away_team' => [$result['away_team_id'] ?? null, $result['away_team_raw'] ?? null],
+        'stadium'   => [$result['stadium_name']   ?? null, $result['stadium_raw']   ?? null],
+        'home_team' => [$result['home_team_name'] ?? null, $result['home_team_raw'] ?? null],
+        'away_team' => [$result['away_team_name'] ?? null, $result['away_team_raw'] ?? null],
         'club'      => [$result['club_id']      ?? null, $result['club_raw']      ?? null],
     ];
     foreach ($pairs as $k => [$id, $raw]) {
@@ -123,9 +124,9 @@ if (!empty($catWise)) {
             'OK',
             'url=' . ($result['url'] ?? $url),
             'level=' . $pageLevel,
-            'home=' . ($result['home_team_id'] ?? 'null'),
-            'away=' . ($result['away_team_id'] ?? 'null'),
-            'stadium=' . ($result['stadium_id'] ?? 'null'),
+            'home=' . ($result['home_team_name'] ?? 'null'),
+            'away=' . ($result['away_team_name'] ?? 'null'),
+            'stadium=' . ($result['stadium_name'] ?? 'null'),
         ];
         fwrite(STDOUT, implode(PHP_EOL, $summary) . PHP_EOL . PHP_EOL);
         fwrite(STDOUT, 'unresolved=' . json_encode($gameEvent['unresolved'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . PHP_EOL);
@@ -140,9 +141,9 @@ if (!$APP_QUIET) {
         'OK',
         'url=' . ($result['url'] ?? $url),
         'level=' . $pageLevel,
-        'home=' . ($result['home_team_id'] ?? 'null'),
-        'away=' . ($result['away_team_id'] ?? 'null'),
-        'stadium=' . ($result['stadium_id'] ?? 'null'),
+        'home=' . ($result['home_team_name'] ?? 'null'),
+        'away=' . ($result['away_team_name'] ?? 'null'),
+        'stadium=' . ($result['stadium_name'] ?? 'null'),
     ];
     fwrite(STDOUT, implode(PHP_EOL, $summary) . PHP_EOL . PHP_EOL);
     fwrite(STDOUT, 'unresolved={}' . PHP_EOL);

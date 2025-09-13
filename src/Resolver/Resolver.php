@@ -6,7 +6,9 @@ namespace App\Resolver;
 
 use App\Resolver\AliasNormalizer;
 
-
+/**
+ * チーム名、球場名、クラブ名を受け取って正式名称を返すクラス
+ */
 final class Resolver
 {
 
@@ -33,55 +35,64 @@ final class Resolver
     }
 
     /**
+     * チーム名を厳密に正規化して正式名称を解決
+     * 
      * @param string $teamName
-     * @return int|null
+     * @return string|null 正式名称
      */
-    public function resolveTeamIdStrict(string $teamName): ?int
+    public function resolveTeamNameStrict(string $teamName): ?string
     {
         $needle = $this->normalizeStrict($teamName);
         foreach ($this->teams as $team) {
-            $name = $this->normalizeStrict((string)$team['team_name']);
+            $name = $team['team_name'];
             if ($name === $needle) {
-                return (int)$team['team_id'];
+                return $name;
             }
         }
         return null;
     }
 
     /**
+     * 球場名を厳密に正規化して正式名称を解決
+     * 
      * @param string $stadiumName
-     * @return int|null
+     * @return string|null 正式名称
      */
-    public function resolveStadiumIdStrict(string $stadiumName): ?int
+    public function resolveStadiumNameStrict(string $stadiumName): ?string
     {
         $needle = $this->normalizeStrict($stadiumName);
         foreach ($this->stadiums as $stadium) {
-            $name = $this->normalizeStrict((string)$stadium['stadium_name']);
+            $name = $stadium['stadium_name'];
             if ($name === $needle) {
-                return (int)$stadium['stadium_id'];
+                return $name;
             }
         }
         return null;
     }
 
-
     /**
+     * クラブ名を厳密に正規化して正式名称を解決
+     * 
      * @param string $clubName
-     * @return int|null
+     * @return string|null 正式名称
      */
-    public function resolveClubIdStrict(string $clubName): ?int
+    public function resolveClubNameStrict(string $clubName): ?string
     {
         $needle = $this->normalizeStrict($clubName);
         foreach ($this->clubs as $club) {
-            $name = $this->normalizeStrict((string)$club['club_name']);
+            $name = $club['club_name'];
             if ($name === $needle) {
-                return (int)$club['club_id'];
+                return $name;
             }
         }
         return null;
     }
 
-
+    /**
+     * 文字列を厳密に正規化
+     * @param string $s
+     * @return string
+     */
     private function normalizeStrict(string $s): string
     {
         $s = trim($s);
@@ -92,68 +103,50 @@ final class Resolver
     }
 
     /**
-     * @param int $clubId
-     * @param string $level
-     * @return int|null
-     */
-    private function pickTeamIdByClubAndLevel(int $clubId, string $level): ?int
-    {
-        foreach ($this->teams as $t) {
-            if ((int)$t['club_id'] === $clubId && (string)$t['level'] === $level) {
-                return (int)$t['team_id'];
-            }
-        }
-        return null;
-    }
-
-    /**
-     * レベル（First|Farm）を明示してチームIDを解決
+     * レベル（First|Farm）を明示してファジーにチームIDを解決
      * @param string $teamName
      * @param string $level First|Farm
      * @return int|null
      */
-    public function resolveTeamIdFuzzy(string $teamName, string $level): ?int
+    public function resolveTeamNameFuzzy(string $teamName, string $level): ?string
     {
-        // 1) level に応じて first/farm の辞書で正規化 → strict
-        $id = $level === 'First'
-            ? $this->resolveTeamIdStrict($this->alias->normalizeTeamFirst($teamName))
-            : $this->resolveTeamIdStrict($this->alias->normalizeTeamFarm($teamName));
-        if ($id !== null) return $id;
-
-        // 2) それでもダメなら「クラブ」辞書で club_id を当てて、レベルでチーム選定
-        $clubId = $this->resolveClubIdFuzzy($teamName);
-        if ($clubId !== null) {
-            $picked = $this->pickTeamIdByClubAndLevel($clubId, $level);
-            if ($picked !== null) return $picked;
+        // level に応じて first/farm の辞書で正規化 → strict
+        if ($level === 'First') {
+            $name = $this->alias->normalizeTeamFirst($teamName) ?? null;
+        } elseif ($level === 'Farm') {
+            $name = $this->alias->normalizeTeamFarm($teamName) ?? null;
+        } else {
+            $name = null;
         }
-
-        // 3) 最後に strict そのまま（念のため）
-        return $this->resolveTeamIdStrict($teamName);
+        return $name;
     }
 
     /**
+     * 球場名をファジーに正規化して正式名称を解決
+     * 
      * @param string $stadiumName
-     * @return int|null
+     * @return string|null 正式名称
      */
-    public function resolveStadiumIdFuzzy(string $stadiumName): ?int
+    public function resolveStadiumNameFuzzy(string $stadiumName): ?string
     {
-        $id = $this->resolveStadiumIdStrict($stadiumName);
-        if ($id !== null) return $id;
+        $name = $this->resolveStadiumNameStrict($stadiumName);
+        if ($name !== null) return $name;
 
         $normalized = $this->alias->normalizeStadium($stadiumName);
-        return $this->resolveStadiumIdStrict($normalized);
+        return $normalized;
     }
 
     /**
+     * クラブ名をファジーに正規化して正式名称を解決
      * @param string $clubName
-     * @return int|null
+     * @return string|null 正式名称
      */
-    public function resolveClubIdFuzzy(string $clubName): ?int
+    public function resolveClubNameFuzzy(string $clubName): ?string
     {
-        $id = $this->resolveClubIdStrict($clubName);
-        if ($id !== null) return $id;
+        $name = $this->resolveClubNameStrict($clubName);
+        if ($name !== null) return $name;
 
         $normalized = $this->alias->normalizeClub($clubName);
-        return $this->resolveClubIdStrict($normalized);
+        return $normalized;
     }
 }
