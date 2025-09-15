@@ -23,20 +23,21 @@ final class GameMetaScraper
      * @param string $url
      * @param string $pageLevel First|Farm
      * @return array{
-     *  url: string,
-     *  date_label: ?string,
-     *  time: ?string,
-     *  stadium_raw: ?string,
-     *  home_team_raw: ?string,
-     *  away_team_raw: ?string,
+     *  url: string, // 例: "https://baseball.yahoo.co.jp/npb/game/2021029801/top"
+     *  date: ?string, // 例: "9/7（日）"
+     *  time: ?string, // 例: "18:00"
+     *  stadium_raw: ?string, // 例: "甲子園"
+     *  home_team_raw: ?string, // 例: "阪神"
+     *  away_team_raw: ?string, // 例: "広島"
      *  page_level: ?string, // First|Farm
-     *  home_team_id: ?int,
+     *  home_team_id: ?int, 
      *  away_team_id: ?int,
      *  stadium_id: ?int,
-     *  unresolved: array<string, string>,
+     *  unresolved: array<string, string>, // 例: ["ロッテ"]
+     *  unresolved_map: array<string, string>, // 例: {"stadium":"ロッテ"}
      * }
      */
-    public function scrape(string $url, string $pageLevel): array
+    public function scrapeMeta(string $url, string $pageLevel): array
     {
         $html = (string)$this->http->request('GET', $url)->getBody();
         $crawler = new Crawler($html);

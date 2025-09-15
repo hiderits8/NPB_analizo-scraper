@@ -8,6 +8,7 @@ use App\Http\DictClient;
 use App\Resolver\Resolver;
 use App\Resolver\AliasNormalizer;
 use App\Scrape\GameMetaScraper;
+use App\Scrape\GameParticipantsScraper;
 use App\Resolver\AliasesLoader;
 use GuzzleHttp\Client;
 use Dotenv\Dotenv;
@@ -25,7 +26,7 @@ $PENDING_DIR = $root . '/logs/pending_aliases';
 $url       = $argv[1] ?? null;         // e.g. https://baseball.yahoo.co.jp/npb/game/.../top
 $pageLevel = $argv[2] ?? null;         // First | Farm
 if (!$url || !in_array($pageLevel, ['First', 'Farm'], true)) {
-    if (!$APP_QUIET) fwrite(STDERR, "Usage: php bin/scrape_one.php <game-url> <First|Farm>\n");
+    if (!$APP_QUIET) fwrite(STDERR, "Usage: php bin/game_scrape.php <game-url> <First|Farm>\n");
     exit(2);
 }
 
@@ -50,8 +51,23 @@ $resolver      = new Resolver($teams, $stadiums, $clubs, new AliasNormalizer($al
 // 3) スクレイプ
 try {
     $scraper = new GameMetaScraper(new Client(['timeout' => 15]), $resolver);
-    /** @var array $result */
-    $result  = $scraper->scrape($url, $pageLevel);
+    /** 
+     * @var $result : array{
+     *  url: string, // 例: "https://baseball.yahoo.co.jp/npb/game/2021029801/top"
+     *  date: ?string, // 例: "9/7（日）"
+     *  time: ?string, // 例: "18:00"
+     *  stadium_raw: ?string, // 例: "甲子園"
+     *  home_team_raw: ?string, // 例: "阪神"
+     *  away_team_raw: ?string, // 例: "広島"
+     *  page_level: ?string, // First|Farm
+     *  home_team_id: ?int, 
+     *  away_team_id: ?int,
+     *  stadium_id: ?int,
+     *  unresolved: array<string, string>, // 例: ["ロッテ"]
+     *  unresolved_map: array<string, string>, // 例: {"stadium":"ロッテ"}
+     * }
+     */
+    $result  = $scraper->scrapeMeta($url, $pageLevel);
 } catch (\Throwable $e) {
     // エラーログを保存
     $logDir = $root . '/logs';
@@ -69,7 +85,6 @@ if (empty($unresolvedMap)) {
         'stadium'   => [$result['stadium_name']   ?? null, $result['stadium_raw']   ?? null],
         'home_team' => [$result['home_team_name'] ?? null, $result['home_team_raw'] ?? null],
         'away_team' => [$result['away_team_name'] ?? null, $result['away_team_raw'] ?? null],
-        'club'      => [$result['club_id']      ?? null, $result['club_raw']      ?? null],
     ];
     foreach ($pairs as $k => [$id, $raw]) {
         // (IDがnullで、rawが文字列で、空でない場合) 未解決マップに追加
@@ -133,6 +148,93 @@ if (!empty($catWise)) {
         fwrite(STDOUT, "db_write=skip (unresolved)\n");
     }
     exit(2);
+}
+
+// 6.5) 参加者（スタメン＋ベンチ）を出力（正常系のみ）。失敗しても致命にはしない。
+try {
+    $participants = (new GameParticipantsScraper(new Client(['timeout' => 15])))->scrape($url);
+} catch (\Throwable $e) {
+    $participants = ['home' => ['starters' => [], 'bench' => []], 'away' => ['starters' => [], 'bench' => []]];
+    $logDir = $root . '/logs';
+    if (!is_dir($logDir)) mkdir($logDir, 0777, true);
+    file_put_contents($logDir . '/error.log', sprintf('[%s] participants url=%s ERROR=%s\n', date('c'), $url, $e->getMessage()), FILE_APPEND);
+}
+
+// game_key は URL の数列（安定ID用途のみ）。日付ディレクトリは「今年 + $result['date'] の月日」
+$gameKey = null;
+if (preg_match('#/game/(\d{9,12})/#', $url, $m)) {
+    $gameKey = $m[1];
+}
+
+$tz  = new \DateTimeZone('Asia/Tokyo');
+$now = new \DateTime('now', $tz);
+$year = (int)$now->format('Y');
+
+$deriveYmd = function (array $res) use ($year): string {
+    // Meta は date と time のみを返す。date 例: "9/7（日）"
+    $v = isset($res['date']) && is_string($res['date']) ? trim($res['date']) : '';
+    if ($v !== '') {
+        // 日本語の曜日などの括弧以降を取り除く（例: 9/7（日）→ 9/7）
+        $posParen = mb_strpos($v, '（');
+        if ($posParen !== false) {
+            $v = mb_substr($v, 0, $posParen);
+        }
+        $v = trim($v);
+
+        $month = null;
+        $day = null;
+        // M/D の形式
+        if (strpos($v, '/') !== false) {
+            [$m, $d] = array_map('trim', explode('/', $v, 2));
+            $month = (int)$m;
+            $day = (int)$d;
+        }
+
+        if ($month !== null && $day !== null && $month >= 1 && $month <= 12 && $day >= 1 && $day <= 31) {
+            return sprintf('%04d%02d%02d', $year, $month, $day);
+        }
+    }
+    // フォールバック：今日（Asia/Tokyo）
+    return (new \DateTime('now', new \DateTimeZone('Asia/Tokyo')))->format('Ymd') + 'Fallback(scrape date)';
+};
+
+$ymd = $deriveYmd($result);
+
+$outDir  = $root . '/logs/output/' . $ymd;
+if (!is_dir($outDir)) mkdir($outDir, 0777, true);
+$outFile = $outDir . '/game_participants.ndjson';
+
+$write = function (array $row) use ($outFile) {
+    file_put_contents($outFile, json_encode($row, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . PHP_EOL, FILE_APPEND | LOCK_EX);
+};
+
+foreach (['home', 'away'] as $side) {
+    // starters
+    foreach (($participants[$side]['starters'] ?? []) as $p) {
+        $write([
+            'game_key'        => $gameKey,
+            'team_side'       => strtoupper($side), // HOME | AWAY
+            'type'            => 'starter',
+            'slot'            => $p['slot'] ?? null,     // DHの先発投手補完時はnull
+            'position'        => $p['position'] ?? null, // 例: 中, 二, 指, 投
+            'player_name_ja'  => $p['name'] ?? null,
+            'url'             => $url,
+            'scraped_at'      => date('c'),
+        ]);
+    }
+    // bench（存在しない試合もある）
+    foreach (($participants[$side]['bench'] ?? []) as $p) {
+        $write([
+            'game_key'        => $gameKey,
+            'team_side'       => strtoupper($side),
+            'type'            => 'bench',
+            'slot'            => null,
+            'position'        => null,
+            'player_name_ja'  => $p['name'] ?? null,
+            'url'             => $url,
+            'scraped_at'      => date('c'),
+        ]);
+    }
 }
 
 // 7) ロギング (正常終了)
