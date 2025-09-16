@@ -251,37 +251,53 @@ class PlayerGameStats {
   + game_id : INT <<FK>> // 試合ID
   + player_id : INT <<FK>> // 選手ID
   '--- Batting Stats ---
-  + AB : INT // 打席数 (At Bats)
-  + R : INT // 得点 (Runs)
-  + H : INT // 安打数 (Hits)
-  + doubles : INT // 二塁打数 (Doubles)
-  + triples : INT // 三塁打数 (Triples)
-  + HR : INT // 本塁打数 (Home Runs)
+  + PA : INT // 打席数 (Plate Appearance)
+  + AB : INT // 打数 (At Bat)
+  + H : INT // 安打数 (Hit)
+  + 1B : INT // 一塁打数 (One-base Hit)
+  + 2B : INT // 二塁打数 (Two-base Hit)
+  + 3B : INT // 三塁打数 (Three-base Hit)
+  + HR : INT // 本塁打数 (Home Run)
+  + R : INT // 得点 (Run)
   + RBI : INT // 打点 (Runs Batted In)
-  + SO : INT // 三振 (Strikeouts, batting)
-  + BB : INT // 四球 (Walks)
+  + BB : INT // 四球 (Base on Ball/Walk)
+  + IBB : INT // 故意四球・敬遠 (Intentional Base on Ball)
+  + SO : INT // 三振 (Strike Out)
   + HBP : INT // 死球 (Hit By Pitch)
-  + SacBunt : INT // 犠打 (Sacrifice Bunts)
-  + SacFly : INT // 犠飛 (Sacrifice Flies)
-  + SB : INT // 盗塁 (Stolen Bases)
-  + E : INT // 失策 (Errors)
+  + SH : INT // 犠打 (Sacrifice Hit)
+  + SF : INT // 犠飛 (Sacrifice Fly)
+  + GDP : INT // 併殺打 (Grounded into Double Play)
+  + SB : INT // 盗塁 (Steal a Base)
+  + CS : INT // 盗塁阻止 (Caught Stealing)
   '--- Pitching Stats ---
+  + W : INT // 勝利 (Win) 0 or 1
+  + L : INT // 敗戦 (Lose) 0 or 1
+  + G : INT // 登板 (Game) 0 or 1
+  + GS : INT // 先発登板 (Games Started) 0 or 1
+  + CG : INT // 完投 (Complete Game) 0 or 1
+  + ShO : INT // 完封 (Shutout) 0 or 1
+  + SV : INT // セーブ数 (Save) 0 or 1
+  + HLD : INT // ホールド数 (Hold) 0 or 1
   + IP : FLOAT // 投球回数 (Innings Pitched)
-  + Pitches : INT // 投球数 (Total Pitches)
-  + BF : INT // 対戦打者数 (Batters Faced)
-  + H_allowed : INT // 被安打数 (Hits Allowed)
-  + HR_allowed : INT // 被本塁打数 (Home Runs Allowed)
-  + K : INT // 奪三振 (Strikeouts, pitching)
-  + BB_given : INT // 与四球数 (Walks Given)
-  + HBP_given : INT // 与死球数 (Hit By Pitch Given)
-  + R_allowed : INT // 失点 (Runs Allowed)
+  + TBF : INT // 対戦打者数 (Total Batters Faced)
+  + H_a : INT // 被安打数 (Hits Allowed)
+  + R_a : INT // 失点 (Runs Allowed)
   + ER : INT // 自責点 (Earned Runs)
-  + W : INT // 勝利数 (Wins)
-  + L : INT // 敗戦数 (Losses)
-  + Holds : INT // ホールド数 (Holds)
-  + SV : INT // セーブ数 (Saves)
-  '--- Appearance ---
-  + outs_recorded : INT // 出場アウト数（PlayerGameAppearance集計値->3で除してInningsPlayedにする）
+  + HR_a : INT // 被本塁打数 (Home Runs Allowed)
+  + BB_g : INT // 与四球数 (Walks and Given)
+  + IBB_g : INT // 故意四球・敬遠数 (Intentional Base on Ball Given)
+  + HBP_g : INT // 与死球数 (Hit By Pitch given)
+  + BK : INT // ボーク数 (Balk)
+  + K : INT // 奪三振 (Strikeout)
+  + Pitches : INT // 投球数 (Total Pitches)
+  '--- Fielding Stats ---
+  + outs_recorded : INT // 出場アウト数（PlayerGameAppearance集計値->3で除してInningsPlayedにする） 投手・野手共通
+  + E : INT // 失策 (Errors) 投手・野手共通
+  + SB_a : INT // 盗塁 (Stolen Base Allowed) 投手・捕手共通
+  + CS : INT // 盗塁阻止 (Caught Stealing) 投手・捕手共通
+  + WP : INT // ワイルドピッチ (Wild Pitch) 投手・捕手共通
+  + PB : INT // パスボール (Passed Ball) 捕手
+  '--- Other Stats ---
   + created_at : DATETIME // 統計レコード作成日時
   + updated_at : DATETIME // 統計レコード更新日時
 }
