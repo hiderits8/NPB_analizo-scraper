@@ -63,8 +63,9 @@
 | final_score_home | INT          |      | ホームチーム最終得点                                  |
 | final_score_away | INT          |      | アウェイチーム最終得点                                  |
 | status           | VARCHAR(20)  |      | 試合状態（scheduled, completed, cancelled）         |
-| is_nighter       | VARCHAR(10)  |      | ナイターかどうか（17時以降開始ならTRUE）              |
+| is_nighter       | BOOLEAN      |      | ナイターかどうか（17時以降開始ならTRUE）              |
 | category_id      | INT          | FK   | 試合カテゴリID（GameCategory.category_id）           |
+| source_yahoo_id  | VARCHAR(20)  |      | Yahoo!の試合ID（例：2021029801）                      |
 | created_at       | DATETIME     |      | 作成日時                                             |
 | updated_at       | DATETIME     |      | 更新日時                                             |
 
@@ -130,13 +131,13 @@
 | game_id         | INT       | FK   | 試合ID（Game.game_id）                                                |
 | player_id       | INT       | FK   | 選手ID（Player.player_id）                                            |
 | team_id         | INT       | FK   | その試合で所属するチーム（Team.team_id）                               |
-| position        | VARCHAR(20)|     | 出場ポジション（Pitcher, Catcher, Infield, Outfield 等）               |
+| position_id     | INT       | FK   | 出場ポジションID（Position.position_id）                 |
 | start_inning    | INT       |      | 出場開始イニング（例: スタメンなら1）                                   |
 | end_inning      | INT       |      | 出場終了イニング（交代があればそのイニング、無ければ最終イニング）        |
-| outs_recorded   | INT       |      | **出場アウト数**（※er.pu準拠のカラム名。typoだが er.pu に合わせる）      |
+| outs_recorded   | INT       |      | **出場アウト数**（er.pu準拠。3で除してInningsPlayedに換算可能）      |
 | created_at      | DATETIME  |      | 作成日時                                                               |
 | updated_at      | DATETIME  |      | 更新日時                                                               |
-> UNIQUE: (game_id, player_id, start_inning)
+> UNIQUE: (game_id, player_id, start_inning, position_id)
 
 
 ---
@@ -211,8 +212,8 @@
 |---------------|--------------|------|----------------------------------------------------------------|
 | event_id      | INT          | PK   | 交代イベントの一意識別子                                         |
 | pbp_id        | INT          | FK   | 関連するPlayByPlayのID                                           |
-| from_position | VARCHAR(20)  |      | 交代前ポジション（Infield/Outfield/Pitcher/Catcher/Bench）        |
-| to_position   | VARCHAR(20)  |      | 交代後ポジション（Infield/Outfield/Pitcher/Catcher/Bench）        |
+| from_position_id | INT          | FK   | 交代前ポジションID（Position.position_id）                     |
+| to_position_id   | INT          | FK   | 交代後ポジションID（Position.position_id）                     |
 | player_id     | INT          | FK   | 交代対象の選手ID                                                 |
 | appearance_id | INT          | FK   | 関連するPlayerGameAppearance ID                                   |
 | created_at    | DATETIME     |      | 作成日時                                                         |
@@ -242,8 +243,8 @@
 | event_id           | INT          | PK   | エラーイベントの一意識別子                         |
 | pbp_id             | INT          | FK   | 関連するPlayByPlayのID                             |
 | player_id          | INT          | FK   | エラーを犯した選手のID                             |
+| position_id        | INT          | FK   | エラー発生時の守備ポジションID（Position.position_id）           |
 | error_context      | VARCHAR(50)  |      | エラー状況（batted_ball, pickoff, throwing_error） |
-| defensive_position | VARCHAR(20)  |      | エラー発生時の守備ポジション                        |
 | created_at         | DATETIME     |      | 作成日時                                          |
 | updated_at         | DATETIME     |      | 更新日時                                          |
 
@@ -262,45 +263,103 @@
 
 ---
 
-## PlayerGameStats
+## PlayerGameBattingStats
 
-| 項目名        | データ型 | 制約 | 説明                                               |
-|---------------|----------|------|----------------------------------------------------|
-| stats_id      | INT      | PK   | 統計レコードの一意識別子                             |
-| game_id       | INT      | FK   | 試合ID（Game.game_id）                               |
-| player_id     | INT      | FK   | 選手ID（Player.player_id）                           |
-| AB            | INT      |      | 打席数                                              |
-| R             | INT      |      | 得点                                                |
-| H             | INT      |      | 安打数                                              |
-| doubles       | INT      |      | 二塁打数                                            |
-| triples       | INT      |      | 三塁打数                                            |
-| HR            | INT      |      | 本塁打数                                            |
-| RBI           | INT      |      | 打点                                                |
-| SO            | INT      |      | 三振（打者）                                        |
-| BB            | INT      |      | 四球                                                |
-| HBP           | INT      |      | 死球                                                |
-| SacBunt       | INT      |      | 犠打                                                |
-| SacFly        | INT      |      | 犠飛                                                |
-| SB            | INT      |      | 盗塁                                                |
-| E             | INT      |      | 失策                                                |
-| IP            | FLOAT    |      | 投球回数（Innings Pitched）                          |
-| Pitches       | INT      |      | 投球数                                              |
-| BF            | INT      |      | 対戦打者数                                          |
-| H_allowed     | INT      |      | 被安打数                                            |
-| HR_allowed    | INT      |      | 被本塁打数                                          |
-| K             | INT      |      | 奪三振（投手）                                       |
-| BB_given      | INT      |      | 与四球数                                            |
-| HBP_given     | INT      |      | 与死球数                                            |
-| R_allowed     | INT      |      | 失点                                                |
-| ER            | INT      |      | 自責点                                              |
-| W             | INT      |      | 勝利                                                |
-| L             | INT      |      | 敗戦                                                |
-| Holds         | INT      |      | ホールド                                             |
-| SV            | INT      |      | セーブ                                               |
-| outs_recorded | INT      |      | **出場アウト数**（PlayerGameAppearance の集計値）     |
-| created_at    | DATETIME |      | 統計レコード作成日時                                  |
-| updated_at    | DATETIME |      | 統計レコード更新日時                                  |
+| 項目名   | データ型     | 制約 | 説明                                   |
+|----------|--------------|------|----------------------------------------|
+| stats_id | INT          | PK   | 統計レコードの一意識別子                 |
+| game_id  | INT          | FK   | 試合ID（Game.game_id）                  |
+| player_id| INT          | FK   | 選手ID（Player.player_id）              |
+| PA       | INT          |      | 打席数 (Plate Appearance)               |
+| AB       | INT          |      | 打数 (At Bat)                           |
+| H        | INT          |      | 安打数 (Hit)                            |
+| B1       | INT          |      | 一塁打数 (One-base Hit)                 |
+| B2       | INT          |      | 二塁打数 (Two-base Hit)                 |
+| B3       | INT          |      | 三塁打数 (Three-base Hit)               |
+| HR       | INT          |      | 本塁打数 (Home Run)                     |
+| R        | INT          |      | 得点 (Run)                              |
+| RBI      | INT          |      | 打点 (Runs Batted In)                   |
+| BB       | INT          |      | 四球 (Base on Ball/Walk)                |
+| IBB      | INT          |      | 故意四球・敬遠 (Intentional Base on Ball)|
+| SO       | INT          |      | 三振 (Strike Out)                       |
+| HBP      | INT          |      | 死球 (Hit By Pitch)                     |
+| SH       | INT          |      | 犠打 (Sacrifice Hit)                    |
+| SF       | INT          |      | 犠飛 (Sacrifice Fly)                    |
+| GDP      | INT          |      | 併殺打 (Grounded into Double Play)      |
+| SB       | INT          |      | 盗塁 (Steal a Base)                     |
+| CS       | INT          |      | 盗塁死 (Caught Stealing)                |
+| created_at | DATETIME   |      | 統計レコード作成日時                     |
+| updated_at | DATETIME   |      | 統計レコード更新日時                     |
 > UNIQUE: (game_id, player_id)
+
+---
+
+## PlayerGamePitchingStats
+
+| 項目名   | データ型     | 制約 | 説明                                   |
+|----------|--------------|------|----------------------------------------|
+| stats_id | INT          | PK   | 統計レコードの一意識別子                 |
+| game_id  | INT          | FK   | 試合ID（Game.game_id）                  |
+| player_id| INT          | FK   | 選手ID（Player.player_id）              |
+| W        | INT          |      | 勝利 (Win) 0 or 1                       |
+| L        | INT          |      | 敗戦 (Lose) 0 or 1                      |
+| G        | INT          |      | 登板 (Game) 0 or 1                      |
+| GS       | INT          |      | 先発登板 (Games Started) 0 or 1         |
+| CG       | INT          |      | 完投 (Complete Game) 0 or 1              |
+| ShO      | INT          |      | 完封 (Shutout) 0 or 1                    |
+| SV       | INT          |      | セーブ数 (Save) 0 or 1                   |
+| HLD      | INT          |      | ホールド数 (Hold) 0 or 1                 |
+| outs_recorded | INT     |      | 出場アウト数（3で除してInningsPlayed換算） |
+| TBF      | INT          |      | 対戦打者数 (Total Batters Faced)        |
+| H        | INT          |      | 被安打数 (Hits Allowed)                 |
+| R        | INT          |      | 失点 (Runs Allowed)                     |
+| ER       | INT          |      | 自責点 (Earned Runs)                    |
+| HR       | INT          |      | 被本塁打数 (Home Runs Allowed)          |
+| BB       | INT          |      | 与四球数 (Walks and Given)              |
+| IBB      | INT          |      | 故意四球・敬遠数 (Intentional BB Given) |
+| HBP      | INT          |      | 与死球数 (Hit By Pitch given)           |
+| WP       | INT          |      | ワイルドピッチ数 (Wild Pitch)           |
+| BK       | INT          |      | ボーク数 (Balk)                         |
+| SO       | INT          |      | 奪三振 (Strikeout)                      |
+| SB       | INT          |      | 許盗塁 (Stolen Base Allowed)            |
+| CS       | INT          |      | 盗塁刺 (Caught Stealing)                |
+| Pitches  | INT          |      | 投球数 (Total Pitches)                  |
+| created_at | DATETIME   |      | 統計レコード作成日時                     |
+| updated_at | DATETIME   |      | 統計レコード更新日時                     |
+> UNIQUE: (game_id, player_id)
+
+---
+
+## PlayerGameFieldingStats
+
+| 項目名   | データ型     | 制約 | 説明                                   |
+|----------|--------------|------|----------------------------------------|
+| stats_id | INT          | PK   | 統計レコードの一意識別子                 |
+| game_id  | INT          | FK   | 試合ID（Game.game_id）                  |
+| player_id| INT          | FK   | 選手ID（Player.player_id）              |
+| G        | INT          |      | 試合数 (Games)                          |
+| GS       | INT          |      | 先発出場 (Games Started)                |
+| outs_recorded | INT     |      | 出場アウト数（3で除してInningsPlayed換算） |
+| E        | INT          |      | 失策 (Errors)                           |
+| SB       | INT          |      | 許盗塁 (Stolen Base Allowed) 捕手        |
+| CS       | INT          |      | 盗塁刺 (Caught Stealing) 捕手            |
+| WP       | INT          |      | 暴投・ワイルドピッチ (Wild Pitch) 捕手   |
+| PB       | INT          |      | 捕逸・パスボール (Passed Ball) 捕手      |
+| created_at | DATETIME   |      | 統計レコード作成日時                     |
+| updated_at | DATETIME   |      | 統計レコード更新日時                     |
+> UNIQUE: (game_id, player_id)
+
+---
+---
+
+## Position
+
+| 項目名       | データ型     | 制約 | 説明                                  |
+|--------------|--------------|------|---------------------------------------|
+| position_id  | INT          | PK   | ポジションID                           |
+| position_name| VARCHAR(20)  |      | ポジション名 (P, C, 1B, 2B, 3B, SS, LF, CF, RF, DH, PH, PR) |
+| created_at   | DATETIME     |      | 作成日時                               |
+| updated_at   | DATETIME     |      | 更新日時                               |
 
 ---
 
@@ -308,9 +367,14 @@
 
 - **PlayByPlay**: UNIQUE (game_id, inning, top_bottom, pbp_sequence)
 - **PitchEvent**: UNIQUE (pbp_id) — PBP 1件に最大1
-- **PlayerGameStats**: UNIQUE (game_id, player_id)
+- **PlayerGameBattingStats**: UNIQUE (game_id, player_id)
+- **PlayerGamePitchingStats**: UNIQUE (game_id, player_id)
+- **PlayerGameFieldingStats**: UNIQUE (game_id, player_id)
+- **TeamGameBattingStats**: UNIQUE (game_id, team_id)
+- **TeamGamePitchingStats**: UNIQUE (game_id, team_id)
+- **TeamGameFieldingStats**: UNIQUE (game_id, team_id)
 - **PlayerNameHistory**: UNIQUE (player_id, name_type, effective_date)
-- **PlayerGameAppearance**: UNIQUE (game_id, player_id, start_inning)
+- **PlayerGameAppearance**: UNIQUE (game_id, player_id, start_inning, position_id)
 - **SubstitutionEvent**: UNIQUE (appearance_id)
 - **ClubMembership**: 期間重複はアプリ/ETLで検知（DBでは困難）
 
