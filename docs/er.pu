@@ -474,9 +474,9 @@ note right of PitchEvent
 end note
 
 ' 出場記録の重複防止（同一試合・同一選手・同一開始イニング・同一ポジションで一意）
-+note right of PlayerGameAppearance
-+  UNIQUE (game_id, player_id, start_inning, position_id)
-+end note
+note right of PlayerGameAppearance
+  UNIQUE (game_id, player_id, start_inning, position_id)
+end note
 
 note right of SubstitutionEvent
   -- 途中出場のみ起点となる
