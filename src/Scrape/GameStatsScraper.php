@@ -47,14 +47,13 @@ final class GameStatsScraper
 
         // --- 2) 成績抽出（打撃/投球）— 今後ここで GameStatsScraper 専用の解析を行う
         // いまは雛形として空配列を返す。
-        $stats = [
-            'home' => ['batting' => [], 'pitching' => [], 'team' => ['batting_totals' => [], 'pitching_totals' => []]],
-            'away' => ['batting' => [], 'pitching' => [], 'team' => ['batting_totals' => [], 'pitching_totals' => []]],
-        ];
+        $battingStats = (new BatterStatsExtractor())
+            ->extract($crawler, /* meta */ []);
+
 
         return [
             'scoreboard' => $scoreboard,
-            'stats'      => $stats,
+            'batting_stats'      => $battingStats,
         ];
     }
 }
