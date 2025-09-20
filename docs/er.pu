@@ -53,8 +53,9 @@ class Game {
   + final_score_home : INT // ホームチーム最終得点
   + final_score_away : INT // アウェイチーム最終得点
   + status : VARCHAR(20) // 試合状態（scheduled, completed, cancelled）
-  + is_nighter : VARCHAR(10) // ナイターかどうか(17時以降開始ならTRUE)
+  + is_nighter : BOOLEAN // ナイターかどうか(17時以降開始ならTRUE)
   + category_id : INT <<FK>> // 試合カテゴリID
+  + source_yahoo_id : VARCHAR(20) // Yahoo!の試合ID(例：2021029801)
   + created_at : DATETIME // 作成日時
   + updated_at : DATETIME // 更新日時
 }
@@ -118,7 +119,7 @@ class PlayerGameAppearance {
   + game_id : INT <<FK>> // 試合ID
   + player_id : INT <<FK>> // 選手ID
   + team_id : INT <<FK>> // その試合で所属するチーム
-  + position : VARCHAR(20) // 出場ポジション（例: Pitcher, Catcher, Infield, Outfield）
+  + position_id : INT <<FK>> // 出場ポジションID
   + start_inning : INT // 出場開始イニング（例: スタメンなら1）
   + end_inning : INT // 出場終了イニング（交代があればそのイニング、無ければ最終イニング）
   + outs_recorded : INT // 出場アウト数（PlayerGameAppearance集計値->3で除してInningsPlayedにする）
@@ -197,8 +198,8 @@ PlayByPlay "1" -- "0..*" StealEvent : "triggers steal event"
 class SubstitutionEvent {
   + event_id : INT <<PK>> // 交代イベントの一意識別子
   + pbp_id : INT <<FK>> // 関連するPlayByPlay ID
-  + from_position : VARCHAR(20) // 交代前のポジション（例: Infield, Outfield, Pitcher, Catcher, Bench）
-  + to_position : VARCHAR(20) // 交代後のポジション（例: Infield, Outfield, Pitcher, Catcher, Bench）
+  + from_position_id : INT <<FK>> // 交代前のポジションID
+  + to_position_id : INT <<FK>> // 交代後のポジションID
   + player_id : INT <<FK>> // 交代対象の選手ID
   + appearance_id : INT <<FK>> // 関連するPlayerGameAppearance ID
   + created_at : DATETIME // 作成日時
@@ -224,8 +225,8 @@ class ErrorEvent {
   + event_id : INT <<PK>> // エラーイベントの一意識別子
   + pbp_id : INT <<FK>> // 関連するPlayByPlay ID
   + player_id : INT <<FK>> // エラーを犯した選手のID
+  + position_id : INT <<FK>> // エラー発生時の守備ポジション
   + error_context : VARCHAR(50) // エラー状況（例: batted_ball, pickoff, throwing_error）
-  + defensive_position : VARCHAR(20) // エラー発生時の守備ポジション
   + created_at : DATETIME // 作成日時
   + updated_at : DATETIME // 更新日時
 }
@@ -244,19 +245,18 @@ class OtherEvent {
 PlayByPlay "1" -- "0..*" OtherEvent : "triggers other events"
 
 ' ==========================
-' 個人成績テーブル：打撃・投手統計の統合
+' 個人成績テーブル：試合単位（打撃・投手・守備）の統計
 ' ==========================
-class PlayerGameStats {
+class PlayerGameBattingStats {
   + stats_id : INT <<PK>> // 統計レコードの一意識別子
   + game_id : INT <<FK>> // 試合ID
   + player_id : INT <<FK>> // 選手ID
-  '--- Batting Stats ---
   + PA : INT // 打席数 (Plate Appearance)
   + AB : INT // 打数 (At Bat)
   + H : INT // 安打数 (Hit)
-  + 1B : INT // 一塁打数 (One-base Hit)
-  + 2B : INT // 二塁打数 (Two-base Hit)
-  + 3B : INT // 三塁打数 (Three-base Hit)
+  + B1 : INT // 一塁打数 (One-base Hit)
+  + B2 : INT // 二塁打数 (Two-base Hit)
+  + B3 : INT // 三塁打数 (Three-base Hit)
   + HR : INT // 本塁打数 (Home Run)
   + R : INT // 得点 (Run)
   + RBI : INT // 打点 (Runs Batted In)
@@ -268,8 +268,18 @@ class PlayerGameStats {
   + SF : INT // 犠飛 (Sacrifice Fly)
   + GDP : INT // 併殺打 (Grounded into Double Play)
   + SB : INT // 盗塁 (Steal a Base)
-  + CS : INT // 盗塁阻止 (Caught Stealing)
-  '--- Pitching Stats ---
+  + CS : INT // 盗塁死 (Caught Stealing)
+  + created_at : DATETIME // 統計レコード作成日時
+  + updated_at : DATETIME // 統計レコード更新日時
+}
+
+Game "1" -- "0..*" PlayerGameBattingStats : "has game stats"
+Player "1" -- "0..*" PlayerGameBattingStats : "performance per game"
+
+class PlayerGamePitchingStats {
+  + stats_id : INT <<PK>> // 統計レコードの一意識別子
+  + game_id : INT <<FK>> // 試合ID
+  + player_id : INT <<FK>> // 選手ID
   + W : INT // 勝利 (Win) 0 or 1
   + L : INT // 敗戦 (Lose) 0 or 1
   + G : INT // 登板 (Game) 0 or 1
@@ -278,32 +288,140 @@ class PlayerGameStats {
   + ShO : INT // 完封 (Shutout) 0 or 1
   + SV : INT // セーブ数 (Save) 0 or 1
   + HLD : INT // ホールド数 (Hold) 0 or 1
-  + IP : FLOAT // 投球回数 (Innings Pitched)
+  + outs_recorded : INT // 出場アウト数（PlayerGameAppearance集計値->3で除してInningsPlayedにする）
   + TBF : INT // 対戦打者数 (Total Batters Faced)
-  + H_a : INT // 被安打数 (Hits Allowed)
-  + R_a : INT // 失点 (Runs Allowed)
+  + H : INT // 被安打数 (Hits Allowed)
+  + R : INT // 失点 (Runs Allowed)
   + ER : INT // 自責点 (Earned Runs)
-  + HR_a : INT // 被本塁打数 (Home Runs Allowed)
-  + BB_g : INT // 与四球数 (Walks and Given)
-  + IBB_g : INT // 故意四球・敬遠数 (Intentional Base on Ball Given)
-  + HBP_g : INT // 与死球数 (Hit By Pitch given)
+  + HR : INT // 被本塁打数 (Home Runs Allowed)
+  + BB : INT // 与四球数 (Walks and Given)
+  + IBB : INT // 故意四球・敬遠数 (Intentional Base on Ball Given)
+  + HBP : INT // 与死球数 (Hit By Pitch given)
+  + WP : INT // ワイルドピッチ数 (Wild Pitch)
   + BK : INT // ボーク数 (Balk)
-  + K : INT // 奪三振 (Strikeout)
+  + SO : INT // 奪三振 (Strikeout)
+  + SB : INT // 許盗塁 (Stolen Base Allowed)
+  + CS : INT // 盗塁刺 (Caught Stealing)
   + Pitches : INT // 投球数 (Total Pitches)
-  '--- Fielding Stats ---
-  + outs_recorded : INT // 出場アウト数（PlayerGameAppearance集計値->3で除してInningsPlayedにする） 投手・野手共通
-  + E : INT // 失策 (Errors) 投手・野手共通
-  + SB_a : INT // 盗塁 (Stolen Base Allowed) 投手・捕手共通
-  + CS : INT // 盗塁阻止 (Caught Stealing) 投手・捕手共通
-  + WP : INT // ワイルドピッチ (Wild Pitch) 投手・捕手共通
-  + PB : INT // パスボール (Passed Ball) 捕手
-  '--- Other Stats ---
   + created_at : DATETIME // 統計レコード作成日時
   + updated_at : DATETIME // 統計レコード更新日時
 }
 
-Game "1" -- "0..*" PlayerGameStats : "has game stats"
-Player "1" -- "0..*" PlayerGameStats : "performance per game"
+Game "1" -- "0..*" PlayerGamePitchingStats : "has game stats"
+Player "1" -- "0..*" PlayerGamePitchingStats : "performance per game"
+
+class PlayerGameFieldingStats {
+  + stats_id : INT <<PK>> // 統計レコードの一意識別子
+  + game_id : INT <<FK>> // 試合ID
+  + player_id : INT <<FK>> // 選手ID
+  + G : INT // 試合数 (Games)
+  + GS : INT // 先発出場 (Games Started)
+  + outs_recorded : INT // 出場アウト数（PlayerGameAppearance集計値->3で除してInningsPlayedにする）
+  + E : INT // 失策 (Errors)
+  + SB : INT // 許盗塁 (Stolen Base Allowed) 捕手
+  + CS : INT // 盗塁刺 (Caught Stealing) 捕手
+  + WP : INT // 暴投・ワイルドピッチ (Wild Pitch) 捕手
+  + PB : INT // 捕逸・パスボール (Passed Ball) 捕手
+  + created_at : DATETIME // 統計レコード作成日時
+  + updated_at : DATETIME // 統計レコード更新日時
+}
+
+Game "1" -- "0..*" PlayerGameFieldingStats : "has game stats"
+Player "1" -- "0..*" PlayerGameFieldingStats : "performance per game"
+
+' ==========================
+' チーム成績テーブル：試合単位（打撃・投手・守備）の統計
+' ==========================
+
+class TeamGameBattingStats {
+  + stats_id : INT <<PK>> // 統計レコードの一意識別子
+  + game_id : INT <<FK>> // 試合ID
+  + team_id : INT <<FK>> // チームID
+  + PA : INT // 打席数 (Plate Appearance)
+  + AB : INT // 打数 (At Bat)
+  + H : INT // 安打数 (Hit)
+  + B1 : INT // 一塁打数 (One-base Hit)
+  + B2 : INT // 二塁打数 (Two-base Hit)
+  + B3 : INT // 三塁打数 (Three-base Hit)
+  + HR : INT // 本塁打数 (Home Run)
+  + R : INT // 得点 (Run)
+  + RBI : INT // 打点 (Runs Batted In)
+  + BB : INT // 四球 (Base on Ball/Walk)
+  + IBB : INT // 故意四球・敬遠 (Intentional Base on Ball)
+  + SO : INT // 三振 (Strike Out)
+  + HBP : INT // 死球 (Hit By Pitch)
+  + SH : INT // 犠打 (Sacrifice Hit)
+  + SF : INT // 犠飛 (Sacrifice Fly)
+  + GDP : INT // 併殺打 (Grounded into Double Play)
+  + SB : INT // 盗塁 (Steal a Base)
+  + CS : INT // 盗塁死 (Caught Stealing)
+  + created_at : DATETIME // 統計レコード作成日時
+  + updated_at : DATETIME // 統計レコード更新日時
+}
+
+Game "1" -- "0..*" TeamGameBattingStats : "has game stats"
+Team "1" -- "0..*" TeamGameBattingStats : "performance per game"
+
+class TeamGamePitchingStats {
+  + stats_id : INT <<PK>> // 統計レコードの一意識別子
+  + game_id : INT <<FK>> // 試合ID
+  + team_id : INT <<FK>> // チームID
+  + W : INT // 勝利 (Win) 0 or 1
+  + L : INT // 敗戦 (Lose) 0 or 1
+  + G : INT // 試合数 (Game)
+  + CG : INT // 完投 (Complete Game) 0 or 1
+  + ShO : INT // 完封 (Shutout) 0 or 1
+  + SV : INT // セーブ数 (Save) 0 or 1
+  + HLD : INT // ホールド数 (Hold) 0 or 1
+  + outs_recorded : INT // 出場アウト数（PlayerGameAppearance集計値->3で除してInningsPlayedにする）
+  + TBF : INT // 対戦打者数 (Total Batters Faced)
+  + H : INT // 被安打数 (Hits Allowed)
+  + R : INT // 失点 (Runs Allowed)
+  + ER : INT // 自責点 (Earned Runs)
+  + HR : INT // 被本塁打数 (Home Runs Allowed)
+  + BB : INT // 与四球数 (Walks and Given)
+  + IBB : INT // 故意四球・敬遠数 (Intentional Base on Ball Given)
+  + HBP : INT // 与死球数 (Hit By Pitch given)
+  + WP : INT // ワイルドピッチ数 (Wild Pitch)
+  + BK : INT // ボーク数 (Balk)
+  + SO : INT // 奪三振 (Strikeout)
+  + SB : INT // 許盗塁 (Stolen Base Allowed)
+  + CS : INT // 盗塁刺 (Caught Stealing)
+  + created_at : DATETIME // 統計レコード作成日時
+  + updated_at : DATETIME // 統計レコード更新日時
+}
+
+Game "1" -- "0..*" TeamGamePitchingStats : "has game stats"
+Team "1" -- "0..*" TeamGamePitchingStats : "performance per game"
+
+class TeamGameFieldingStats {
+  + stats_id : INT <<PK>> // 統計レコードの一意識別子
+  + game_id : INT <<FK>> // 試合ID
+  + team_id : INT <<FK>> // チームID
+  + G : INT // 試合数 (Game)
+  + E : INT // 失策 (Errors)
+  + SB : INT // 許盗塁 (Stolen Base Allowed)
+  + CS : INT // 盗塁刺 (Caught Stealing)
+  + WP : INT // 暴投・ワイルドピッチ (Wild Pitch)
+  + PB : INT // 捕逸・パスボール (Passed Ball)
+  + created_at : DATETIME // 統計レコード作成日時
+  + updated_at : DATETIME // 統計レコード更新日時
+}
+
+Game "1" -- "0..*" TeamGameFieldingStats : "has game stats"
+Team "1" -- "0..*" TeamGameFieldingStats : "performance per game"
+
+' ==========================
+' ポジションテーブル
+' ==========================
+
+class Position {
+  + position_id : INT <<PK>> // ポジションID
+  + position_name : VARCHAR(20) // ポジション名 (P, C, 1B, 2B, 3B, SS, LF, CF, RF, DH, PH, PR)
+  + created_at : DATETIME // 作成日時
+  + updated_at : DATETIME // 更新日時
+}
+
 
 ' ==========================
 ' UNIQUE 制約（複合）は note で明示
@@ -314,9 +432,29 @@ note right of PlayByPlay
   UNIQUE (game_id, inning, top_bottom, pbp_sequence)
 end note
 
-' 個人成績は試合×選手で一意
-note right of PlayerGameStats
+' 個人成績は試合×選手、試合×チームで一意
+note right of PlayerGameBattingStats
   UNIQUE (game_id, player_id)
+end note
+
+note right of PlayerGamePitchingStats
+  UNIQUE (game_id, player_id)
+end note
+
+note right of PlayerGameFieldingStats
+  UNIQUE (game_id, player_id)
+end note
+
+note right of TeamGameBattingStats
+  UNIQUE (game_id, team_id)
+end note
+
+note right of TeamGamePitchingStats
+  UNIQUE (game_id, team_id)
+end note
+
+note right of TeamGameFieldingStats
+  UNIQUE (game_id, team_id)
 end note
 
 ' 名前履歴は (player_id, name_type, effective_date) で一意
@@ -335,9 +473,9 @@ note right of PitchEvent
   UNIQUE (pbp_id)
 end note
 
-' 出場記録の重複防止（同一試合・同一選手・同一開始イニングで一意）
+' 出場記録の重複防止（同一試合・同一選手・同一開始イニング・同一ポジションで一意）
 note right of PlayerGameAppearance
-  UNIQUE (game_id, player_id, start_inning)
+  UNIQUE (game_id, player_id, start_inning, position_id)
 end note
 
 note right of SubstitutionEvent
