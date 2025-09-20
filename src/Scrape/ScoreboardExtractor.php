@@ -192,12 +192,16 @@ final class ScoreboardExtractor
      * 
      * チーム名で照合して、チームコードを返す
      * @param Crawler $root ルートノード
-     * @param string $teamRaw チーム名
+     * @param ?string $teamRaw チーム名
      * @param string $baseSelector スコア小表のセレクタ
      * @return ?int チームコード (npbTeam23 の 23 を取り出す(Yahoo!のteam固有のコード))
      */
-    private function buildTeamCode(Crawler $root, string $teamRaw, string $baseSelector = '#async-gameBatterStats'): ?int
+    private function buildTeamCode(Crawler $root, ?string $teamRaw, string $baseSelector = '#async-gameBatterStats'): ?int
     {
+        if (!is_string($teamRaw) || $teamRaw === '') {
+            return null;
+        }
+
         $base = $root->filter($baseSelector);
         $boards = $base->filter('.bb-table--resultScoreBoard table.bb-teamScoreTable tr.bb-teamScoreTable__row');
         foreach ($boards as $row) {

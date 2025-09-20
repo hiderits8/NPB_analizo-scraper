@@ -62,6 +62,7 @@ final class BatterStatsExtractor
     public function __construct(string $baseSelector = '#async-gameBatterStats', array $gameMeta)
     {
         $this->baseSelector = $baseSelector;
+        $this->gameMeta = $gameMeta;
     }
 
     /**
@@ -94,8 +95,13 @@ final class BatterStatsExtractor
 
             // チームコードからチーム名を取得
             $teamCode = $this->extractTeamCodeFromClassAttr($table);
-            $side  = $teamCode === $this->gameMeta['away']['team_code'] ? 'away' : 'home';    // 'away' / 'home'
-            $tname = $teamCode === $this->gameMeta[$side]['team_raw']; // '日本ハム' など
+            if ($teamCode !== null && isset($this->gameMeta['away']['team_code'], $this->gameMeta['home']['team_code'])) {
+                $side = ($teamCode === $this->gameMeta['away']['team_code']) ? 'away' : 'home';
+            } else {
+                // フォールバック: 打撃成績テーブルの並び順（1つ目=away, 2つ目=home）
+                $side = count($chunks) === 0 ? 'away' : 'home';
+            }
+            $tname = $this->gameMeta[$side]['team_raw'] ?? null; // '日本ハム' など
 
             // イニング列数（ヘッダの inning 列を数える）
             $inningsCount = $this->countInningsFromHeader($table);
@@ -289,8 +295,10 @@ final class BatterStatsExtractor
     {
         $p = trim($pos);
         // 全角/半角の括弧両対応
-        return (mb_strpos($p, '(') === 0 && mb_strpos($p, ')') === -1)
-            || (mb_strpos($p, '（') === 0 && mb_strpos($p, '）') === -1);
+        if ($p === '') return false;
+        $first = mb_substr($p, 0, 1);
+        $last  = mb_substr($p, -1);
+        return ($first === '(' && $last === ')') || ($first === '（' && $last === '）');
     }
 
     /** 打球結果表記の整形（必要ならここで細かく正規化） */
