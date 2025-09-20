@@ -50,10 +50,14 @@ final class GameStatsScraper
         $battingStats = (new BatterStatsExtractor())
             ->extract($crawler, /* meta */ []);
 
+        // 投手成績
+        $pitchingStats = (new PitcherStatsExtractor('#async-gamePitcherStats'))
+            ->extract($crawler, /* meta */ []);
 
         return [
             'scoreboard' => $scoreboard,
             'batting_stats'      => $battingStats,
+            'pitching_stats'     => $pitchingStats,
         ];
     }
 }
