@@ -57,8 +57,9 @@ final class BatterStatsExtractor
 {
     /** ベースセレクタ（デフォルト: #async-gameBatterStats） */
     private string $baseSelector;
+    private array $gameMeta;
 
-    public function __construct(string $baseSelector = '#async-gameBatterStats')
+    public function __construct(string $baseSelector = '#async-gameBatterStats', array $gameMeta)
     {
         $this->baseSelector = $baseSelector;
     }
@@ -66,6 +67,14 @@ final class BatterStatsExtractor
     /**
      * 抽出本体
      * @param Crawler $root  ページ全体の Crawler
+     * @return array
+     * away: [
+     *   team_raw: チーム名
+     *   innings_count: イニング列数
+     *   players: 打者行 (array)
+     *   totals: チーム成績 (array)
+     * ]
+     * home: [ ... ]
      */
     public function extract(Crawler $root): array
     {
@@ -77,17 +86,16 @@ final class BatterStatsExtractor
             ];
         }
 
-        // 1) スコア小表から「npbTeamXX → side, team_raw」を作る
-        $teamMeta = $this->buildTeamMeta($base); // スコア小表から「teamCode → side, team_raw」を作る (teamCodeはYahoo!のteam固有のコード)
-
-        // 2) チーム別テーブルを走査
+        // チーム別テーブルを走査
         $chunks = []; // チーム別テーブルを走査した結果を格納する配列
         $tables = $base->filter('.bb-blowResultsTable > table.bb-statsTable');
         foreach ($tables as $tblNode) {
             $table = new Crawler($tblNode);
-            $npbTeamCode = $this->extractTeamCodeFromTableClass($table);
-            $side  = $teamMeta[$npbTeamCode]['side']  ?? null;   // 'away' / 'home'
-            $tname = $teamMeta[$npbTeamCode]['name']  ?? null;   // '日本ハム' など
+
+            // チームコードからチーム名を取得
+            $teamCode = $this->extractTeamCodeFromClassAttr($table);
+            $side  = $teamCode === $this->gameMeta['away']['team_code'] ? 'away' : 'home';    // 'away' / 'home'
+            $tname = $teamCode === $this->gameMeta[$side]['team_raw']; // '日本ハム' など
 
             // イニング列数（ヘッダの inning 列を数える）
             $inningsCount = $this->countInningsFromHeader($table);
@@ -113,11 +121,10 @@ final class BatterStatsExtractor
                 'innings_count'  => $inningsCount,  // イニング列数（ヘッダの inning 列を数える） int
                 'players'        => $players,       // 打者行 (array)
                 'totals'         => $totals,        // チーム成績 (array)
-                'npb_team_code'  => $npbTeamCode,   // デバッグ用 (npbTeamXX)
             ];
         }
 
-        // 3) side に基づいて格納（fallback: 順番で away→home）
+        // side に基づいて格納
         $out = [
             'away' => ['team_raw' => null, 'innings_count' => 0, 'players' => [], 'totals' => $this->emptyTotals()],
             'home' => ['team_raw' => null, 'innings_count' => 0, 'players' => [], 'totals' => $this->emptyTotals()],
@@ -143,78 +150,23 @@ final class BatterStatsExtractor
             }
         }
 
-        // 片側しか埋まらないケースのフォールバック（出現順 away→home と仮定）
-        if (empty($out['away']['players']) || empty($out['home']['players'])) {
-            if (count($chunks) >= 1 && empty($out['away']['players'])) {
-                $out['away'] = $this->copyChunk($chunks[0]);
-            }
-            if (count($chunks) >= 2 && empty($out['home']['players'])) {
-                $out['home'] = $this->copyChunk($chunks[1]);
-            }
-        }
-
-        // innings_count の整合（片側が0のときにもう一方を採用）
-        if ($out['away']['innings_count'] === 0 && $out['home']['innings_count'] > 0) {
-            $out['away']['innings_count'] = $out['home']['innings_count'];
-        }
-        if ($out['home']['innings_count'] === 0 && $out['away']['innings_count'] > 0) {
-            $out['home']['innings_count'] = $out['away']['innings_count'];
-        }
-
         return $out;
     }
 
     // ----------------- helpers -----------------
 
-    private function copyChunk(array $ch): array
-    {
-        return [
-            'team_raw'      => $ch['team_raw'],
-            'innings_count' => $ch['innings_count'],
-            'players'       => $ch['players'],
-            'totals'        => $ch['totals'],
-        ];
-    }
-
-    /** スコア小表から npbTeamXX → {side, name} を抜く */
-    private function buildTeamMeta(Crawler $base): array
-    {
-        $map = [];
-        $boards = $base->filter('.bb-table--resultScoreBoard table.bb-teamScoreTable tr.bb-teamScoreTable__row');
-        foreach ($boards as $row) {
-            $tr = new Crawler($row);
-            $class = (string)($tr->attr('class') ?? '');
-            $side = null;
-            if (str_contains($class, 'bb-teamScoreTable__row--away')) $side = 'away';
-            if (str_contains($class, 'bb-teamScoreTable__row--home')) $side = 'home';
-
-            $th = $tr->filter('th.bb-teamScoreTable__head--team');
-            if ($th->count() === 0) continue;
-            $thClass = (string)($th->first()->attr('class') ?? ''); // チーム名のクラス名（例: bb-teamScoreTable__head--team bb-teamScoreTable__head--npbTeam23）
-            $teamCode = $this->extractTeamCodeFromClassString($thClass); // npbTeam23 の 23 を取り出す(Yahoo!のteam固有のコード)
-
-            $nameNode = $th->first()->filter('.bb-gameScoreTable__team');
-            $teamName = $nameNode->count() ? $this->norm($nameNode->text('')) : null; // チーム名（例: 日本ハム）
-
-            if ($teamCode !== null) {
-                $map[$teamCode] = ['side' => $side, 'name' => $teamName]; // チーム名とサイドをマッピング
-            }
-        }
-        return $map;
-    }
-
-    /** table クラス名から npbTeamXX の XX を取り出す */
-    private function extractTeamCodeFromTableClass(Crawler $table): ?string
+    /** class 属性からチームコードを抽出 */
+    private function extractTeamCodeFromClassAttr(Crawler $table): ?int
     {
         $cls = (string)($table->attr('class') ?? '');
         return $this->extractTeamCodeFromClassString($cls);
     }
 
-    private function extractTeamCodeFromClassString(string $cls): ?string
+    private function extractTeamCodeFromClassString(string $cls): ?int
     {
         // 例: "bb-statsTable bb-statsTable--npbTeam23"
         if (preg_match('/npbTeam(\d+)/', $cls, $m)) {
-            return $m[1];
+            return (int)$m[1];
         }
         return null;
     }

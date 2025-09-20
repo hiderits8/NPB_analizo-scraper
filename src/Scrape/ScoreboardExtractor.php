@@ -23,12 +23,14 @@ use App\Util\TextNormalizer;
  * [
  *   'home' => [
  *     'team_raw' => '日本ハム',
+ *     'team_code' => 23,
  *     'innings'  => [1=>0,2=>0,...,9=>null], // 'X' は null
  *     'links'    => [1=>'/npb/game/...score?index=...', ... , 9=>null],
  *     'totals'   => ['R'=>12, 'H'=>12, 'E'=>0],
  *   ],
  *   'away' => [
  *     'team_raw' => '西武',
+ *     'team_code' => 24,
  *     'innings'  => [1=>0,2=>0,...,9=>2],
  *     'links'    => [...],
  *     'totals'   => ['R'=>5, 'H'=>11, 'E'=>2],
@@ -44,7 +46,11 @@ use App\Util\TextNormalizer;
  */
 final class ScoreboardExtractor
 {
-    public function __construct(private string $baseSelector = '#async-inning') {}
+    private string $baseSelector;
+    public function __construct(string $baseSelector = '#async-inning')
+    {
+        $this->baseSelector = $baseSelector;
+    }
 
     public function extract(Crawler $root, array $meta = []): array
     {
@@ -56,34 +62,30 @@ final class ScoreboardExtractor
         }
         if ($table->count() === 0) {
             return [
-                'home' => ['team_raw' => null, 'innings' => [], 'links' => [], 'totals' => ['R' => null, 'H' => null, 'E' => null]],
-                'away' => ['team_raw' => null, 'innings' => [], 'links' => [], 'totals' => ['R' => null, 'H' => null, 'E' => null]],
+                'home' => ['team_raw' => null, 'team_code' => null, 'innings' => [], 'links' => [], 'totals' => ['R' => null, 'H' => null, 'E' => null]],
+                'away' => ['team_raw' => null, 'team_code' => null, 'innings' => [], 'links' => [], 'totals' => ['R' => null, 'H' => null, 'E' => null]],
                 'innings_count' => 0,
             ];
         }
 
         // --- ヘッダからイニング列数を抽出（"1","2",... の <th> を数える）
         $inningIdx = [];
-
         foreach ($table->filter('thead th') as $th) {
             $txt = $this->norm((new Crawler($th))->text(''));
             if ($txt !== '' && ctype_digit($txt)) {
                 $inningIdx[] = (int)$txt; // th のインデックスではなく "順番" として数える用途
             }
         }
-        $nInnings = count($inningIdx);
-        if ($nInnings === 0) {
-            // 既定で9
-            $nInnings = 9;
-        }
+        // イニング列数
+        $nInnings = count($inningIdx) === 0 ? 9 : count($inningIdx); // 既定で9
 
         // --- 本文2行（上=ビジター、下=ホーム）
         $rows = $table->filter('tbody tr.bb-gameScoreTable__row');
         if ($rows->count() < 2) {
             // 想定外だが、空で返す
             return [
-                'home' => ['team_raw' => null, 'innings' => [], 'links' => [], 'totals' => ['R' => null, 'H' => null, 'E' => null]],
-                'away' => ['team_raw' => null, 'innings' => [], 'links' => [], 'totals' => ['R' => null, 'H' => null, 'E' => null]],
+                'home' => ['team_raw' => null, 'team_code' => null, 'innings' => [], 'links' => [], 'totals' => ['R' => null, 'H' => null, 'E' => null]],
+                'away' => ['team_raw' => null, 'team_code' => null, 'innings' => [], 'links' => [], 'totals' => ['R' => null, 'H' => null, 'E' => null]],
                 'innings_count' => $nInnings,
             ];
         }
@@ -94,31 +96,14 @@ final class ScoreboardExtractor
         $topData    = $this->parseRow($topRow, $nInnings);
         $bottomData = $this->parseRow($bottomRow, $nInnings);
 
-        // --- サイド判定
-        [$away, $home] = $this->decideSides(
-            $topData['team_raw'] ?? '',
-            $bottomData['team_raw'] ?? '',
-            (string)($meta['home_team_raw'] ?? ''),
-            (string)($meta['away_team_raw'] ?? '')
-        );
+        $topData['team_code'] = $this->buildTeamCode($root, $topData['team_raw'],  "#async-gameBatterStats");
+        $bottomData['team_code'] = $this->buildTeamCode($root, $bottomData['team_raw'],  "#async-gameBatterStats");
 
         $out = [
-            $home => $bottomData,
-            $away => $topData,
+            'home'          => $bottomData,
+            'away'          => $topData,
             'innings_count' => $nInnings,
         ];
-
-        // decideSides() が swap 要求した場合に対応（上=HOME / 下=AWAY のとき）
-        if ($home === 'home' && $away === 'away') {
-            // 既定（下=home, 上=away）なので上記でOK
-        } elseif ($home === 'away' && $away === 'home') {
-            // 逆転している → マッピングを入れ替え
-            $out = [
-                'home' => $topData,
-                'away' => $bottomData,
-                'innings_count' => $nInnings,
-            ];
-        }
 
         return $out;
     }
@@ -194,38 +179,55 @@ final class ScoreboardExtractor
         }
 
         return [
-            'team_raw' => $teamTxt !== '' ? $teamTxt : null,
-            'innings'  => $innings,
-            'links'    => $links,
-            'totals'   => ['R' => $totR, 'H' => $totH, 'E' => $totE],
+            'team_raw'  => $teamTxt !== '' ? $teamTxt : null,
+            'team_code' => null,
+            'innings'   => $innings,
+            'links'     => $links,
+            'totals'    => ['R' => $totR, 'H' => $totH, 'E' => $totE],
         ];
     }
 
-    // -------- side 判定（meta があれば優先、無ければ 上=AWAY / 下=HOME） --------
-
-    private function decideSides(string $topTeam, string $bottomTeam, string $homeRaw, string $awayRaw): array
+    /**
+     * スコア小表からチームコードを返す
+     * 
+     * チーム名で照合して、チームコードを返す
+     * @param Crawler $root ルートノード
+     * @param string $teamRaw チーム名
+     * @param string $baseSelector スコア小表のセレクタ
+     * @return ?int チームコード (npbTeam23 の 23 を取り出す(Yahoo!のteam固有のコード))
+     */
+    private function buildTeamCode(Crawler $root, string $teamRaw, string $baseSelector = '#async-gameBatterStats'): ?int
     {
-        $T = $this->key($topTeam);
-        $B = $this->key($bottomTeam);
-        $H = $this->key($homeRaw);
-        $A = $this->key($awayRaw);
+        $base = $root->filter($baseSelector);
+        $boards = $base->filter('.bb-table--resultScoreBoard table.bb-teamScoreTable tr.bb-teamScoreTable__row');
+        foreach ($boards as $row) {
+            $tr = new Crawler($row);
 
-        if ($H !== '' && ($T === $H || str_contains($H, $T) || str_contains($T, $H))) {
-            // 上が home
-            return ['home', 'away']; // 上=home → 既定（上=away/下=home）と逆
+            // チーム名で照合して、チームコードを返す
+            $th = $tr->filter('.bb-teamScoreTable__head--team');
+            if ($th->count() === 0) continue;
+            $thText = $this->norm($th->text(''));
+            if ($thText === $teamRaw) {
+                return $this->extractTeamCodeFromClassAttr($th); // npbTeam23 の 23 を取り出す(Yahoo!のteam固有のコード)
+            }
         }
-        if ($H !== '' && ($B === $H || str_contains($H, $B) || str_contains($B, $H))) {
-            // 下が home（既定）
-            return ['away', 'home'];
-        }
-        // meta が使えない → 既定（上=AWAY / 下=HOME）
-        return ['away', 'home'];
+        return null;
     }
 
-    private function key(string $s): string
+    /** table クラス名から npbTeamXX の XX を取り出す */
+    private function extractTeamCodeFromClassAttr(Crawler $th): ?int
     {
-        $t = TextNormalizer::normalizeJaName($s);
-        return mb_strtolower(str_replace(' ', '', $t));
+        $cls = (string)($th->attr('class') ?? '');
+        return $this->extractTeamCodeFromClassString($cls);
+    }
+
+    private function extractTeamCodeFromClassString(string $cls): ?int
+    {
+        // 例: "bb-statsTable bb-statsTable--npbTeam23"
+        if (preg_match('/npbTeam(\d+)/', $cls, $m)) {
+            return (int)$m[1];
+        }
+        return null;
     }
 
     private function norm(string $s): string

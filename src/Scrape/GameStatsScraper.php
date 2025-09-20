@@ -45,16 +45,29 @@ final class GameStatsScraper
         $scoreboard = (new ScoreboardExtractor($this->scoreboardSelector))
             ->extract($crawler, /* meta */ []);
 
+        // 試合のメタ情報を設定
+        $gameMeta = [
+            'away' => [
+                'team_raw' => $scoreboard['away']['team_raw'],
+                'team_code' => $scoreboard['away']['team_code'],
+            ],
+            'home' => [
+                'team_raw' => $scoreboard['home']['team_raw'],
+                'team_code' => $scoreboard['home']['team_code'],
+            ],
+        ];
+
         // --- 2) 成績抽出（打撃/投球）— 今後ここで GameStatsScraper 専用の解析を行う
-        // いまは雛形として空配列を返す。
-        $battingStats = (new BatterStatsExtractor())
+        // 打者成績 
+        $battingStats = new BatterStatsExtractor('#async-gameBatterStats', $gameMeta)
             ->extract($crawler, /* meta */ []);
 
         // 投手成績
-        $pitchingStats = (new PitcherStatsExtractor('#async-gamePitcherStats'))
+        $pitchingStats = new PitcherStatsExtractor('#async-gamePitcherStats', $gameMeta)
             ->extract($crawler, /* meta */ []);
 
         return [
+            'game_meta' => $gameMeta,
             'scoreboard' => $scoreboard,
             'batting_stats'      => $battingStats,
             'pitching_stats'     => $pitchingStats,

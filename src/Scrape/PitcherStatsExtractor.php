@@ -15,7 +15,7 @@ use Symfony\Component\DomCrawler\Crawler;
  * [
  *   'away' => [
  *     'team_raw' => '広島東洋カープ',
- *     'npb_team_code' => 6,
+ *     'team_code' => 6,
  *     'players' => [
  *       [
  *         'state' => '敗',                // 勝, 敗, H, S など。無ければ ''。
@@ -37,9 +37,15 @@ use Symfony\Component\DomCrawler\Crawler;
  */
 final class PitcherStatsExtractor
 {
+    private string $rootSelector;
+    private array $gameMeta;
     public function __construct(
-        private string $rootSelector = '#async-gamePitcherStats'
-    ) {}
+        string $rootSelector = '#async-gamePitcherStats',
+        array $gameMeta
+    ) {
+        $this->rootSelector = $rootSelector;
+        $this->gameMeta = $gameMeta;
+    }
 
     /**
      * @param Crawler $root ページ全体の Crawler を渡す（セクション探索は内部で行う）
@@ -47,7 +53,7 @@ final class PitcherStatsExtractor
      * @return array
      * away: [
      *   team_raw: チーム名
-     *   npb_team_code: チームコード (Yahoo!のteam固有のコード)
+     *   team_code: チームコード (Yahoo!のteam固有のコード)
      *   players: 投手行 (array)
      *     state: 勝/敗/H/S
      *     player_name_raw: 選手名
@@ -76,9 +82,6 @@ final class PitcherStatsExtractor
             return $this->emptyResult();
         }
 
-        // サイド判定用に、ページ内のスコアボード（小）から "npbTeam{N} => away|home, team_name" を推定
-        $teamMeta = $this->buildTeamMetaFromScoreboards($root); // スコアボード（小）から「teamCode → side, team_raw」を作る (teamCodeはYahoo!のteam固有のコード)
-
         // 投手成績テーブルを抽出
         $sections = $container->filter('.bb-modCommon03');
         if ($sections->count() === 0) {
@@ -87,22 +90,21 @@ final class PitcherStatsExtractor
 
         // Yahoo!の並びは概ね「ビジター→ホーム」だが、確実にするため teamMeta で side を解決。
         $buckets = [
-            'away' => ['team_raw' => null, 'npb_team_code' => null, 'players' => []],
-            'home' => ['team_raw' => null, 'npb_team_code' => null, 'players' => []],
+            'away' => ['team_raw' => null, 'team_code' => null, 'players' => []],
+            'home' => ['team_raw' => null, 'team_code' => null, 'players' => []],
         ];
 
         // 投手成績テーブルを抽出
-        $sections->each(function (Crawler $sec) use (&$buckets, $teamMeta) {
+        $sections->each(function (Crawler $sec) use (&$buckets) {
             $teamName = trim($sec->filter('header .bb-head02__title')->text(''));
             $table = $sec->filter('table.bb-scoreTable');
             if ($table->count() === 0) {
                 return;
             }
+            $teamCode = $this->extractTeamCodeFromClassAttr($table->attr('class') ?? '');
 
-            $npbTeamCode = $this->extractTeamCodeFromClassAttr($table->attr('class') ?? '');
-
-            // side 決定（npbTeamCode 優先、なければ teamName 照合、最後に順序フォールバック）
-            $side = $this->resolveSide($npbTeamCode, $teamName, $teamMeta);
+            // side 決定（teamCode 優先、なければ teamName 照合、最後に順序フォールバック）
+            $side = $this->resolveSide($teamCode, $teamName);
 
             // 選手行を抽出
             $players = [];
@@ -113,7 +115,7 @@ final class PitcherStatsExtractor
             // 既に side が埋まっている場合は後勝ちしないよう初回のみ採用
             if ($buckets[$side]['team_raw'] === null) {
                 $buckets[$side]['team_raw'] = $teamName ?: null;
-                $buckets[$side]['npb_team_code'] = $npbTeamCode;
+                $buckets[$side]['team_code'] = $teamCode;
             }
             $buckets[$side]['players'] = array_merge($buckets[$side]['players'], $players);
         });
@@ -124,8 +126,8 @@ final class PitcherStatsExtractor
     private function emptyResult(): array
     {
         return [
-            'away' => ['team_raw' => null, 'npb_team_code' => null, 'players' => []],
-            'home' => ['team_raw' => null, 'npb_team_code' => null, 'players' => []],
+            'away' => ['team_raw' => null, 'team_code' => null, 'players' => []],
+            'home' => ['team_raw' => null, 'team_code' => null, 'players' => []],
         ];
     }
 
@@ -257,7 +259,7 @@ final class PitcherStatsExtractor
      */
     private function extractTeamCodeFromClassAttr(string $classAttr): ?int
     {
-        if (preg_match('/bb-scoreTable--npbTeam(\d+)/', $classAttr, $m)) {
+        if (preg_match('/npbTeam(\d+)/', $classAttr, $m)) {
             return (int)$m[1];
         }
         return null;
@@ -272,58 +274,16 @@ final class PitcherStatsExtractor
      * ここでは 3) は呼び出し側（ループ順）に依存するので、
      * teamName が既に buckets に存在しているかで簡易制御するのも可。
      */
-    private function resolveSide(?int $npbTeamCode, string $teamName, array $teamMeta): string
+    private function resolveSide(?int $npbTeamCode, string $teamName): string
     {
-        if ($npbTeamCode !== null && isset($teamMeta['by_code'][$npbTeamCode])) {
-            return $teamMeta['by_code'][$npbTeamCode]['side'];
+        if ($npbTeamCode !== null) {
+            return $npbTeamCode === $this->gameMeta['away']['team_code'] ? 'away' : 'home';
         }
-        if ($teamName !== '' && isset($teamMeta['by_name'][$teamName])) {
-            return $teamMeta['by_name'][$teamName]['side'];
+        if ($teamName !== '') {
+            return $teamName === $this->gameMeta['away']['team_raw'] ? 'away' : 'home';
         }
         // フォールバック: 未確定のときは away 優先、2回目以降は home
         // ただしここではコンテキストが無いのでデフォルトは away にする。
         return 'away';
-    }
-
-    /**
-     * ページ下部の「チームごとのスコアボード（小）」から side を特定。
-     * 例: <th class="bb-teamScoreTable__head--npbTeam23">日本ハム</th>
-     * 
-     * @param Crawler $root ページ全体の Crawler を渡す
-     * @return array ['by_code' => [], 'by_name' => []]
-     * by_code: [code => ['side' => 'away' | 'home', 'name' => 'チーム名']]
-     * by_name: [チーム名 => ['side' => 'away' | 'home', 'code' => code]]
-     */
-    private function buildTeamMetaFromScoreboards(Crawler $root): array
-    {
-        $meta = ['by_code' => [], 'by_name' => []];
-
-        $root->filter('.bb-table--resultScoreBoard .bb-teamScoreTable__row')->each(function (Crawler $row) use (&$meta) {
-            // チームごとのスコアボード（小）から side を特定
-            $isAway = $row->matches('.bb-teamScoreTable__row--away');
-            $isHome = $row->matches('.bb-teamScoreTable__row--home');
-            $side = $isAway ? 'away' : ($isHome ? 'home' : null);
-            if (!$side) return;
-
-            // チーム名とコードを抽出
-            $th = $row->filter('th.bb-teamScoreTable__head');
-            if ($th->count() === 0) return;
-
-            $teamName = trim($th->filter('.bb-gameScoreTable__team, span.bb-gameScoreTable__team')->text(''));
-            $class = $th->attr('class') ?? '';
-            $code = null;
-            if (preg_match('/bb-teamScoreTable__head--npbTeam(\d+)/', $class, $m)) {
-                $code = (int)$m[1];
-            }
-
-            if ($code !== null) {
-                $meta['by_code'][$code] = ['side' => $side, 'name' => $teamName];
-            }
-            if ($teamName !== '') {
-                $meta['by_name'][$teamName] = ['side' => $side, 'code' => $code];
-            }
-        });
-
-        return $meta;
     }
 }
