@@ -37,15 +37,11 @@ use Symfony\Component\DomCrawler\Crawler;
  */
 final class PitcherStatsExtractor
 {
-    private string $rootSelector;
-    private array $gameMeta;
+
     public function __construct(
-        string $rootSelector = '#async-gamePitcherStats',
-        array $gameMeta
-    ) {
-        $this->rootSelector = $rootSelector;
-        $this->gameMeta = $gameMeta;
-    }
+        private array $gameMeta,
+        private string $rootSelector = '#async-gamePitcherStats'
+    ) {}
 
     /**
      * @param Crawler $root ページ全体の Crawler を渡す（セクション探索は内部で行う）
