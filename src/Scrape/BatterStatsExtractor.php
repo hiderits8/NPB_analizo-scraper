@@ -55,15 +55,10 @@ use App\Util\TextNormalizer;
  */
 final class BatterStatsExtractor
 {
-    /** ベースセレクタ（デフォルト: #async-gameBatterStats） */
-    private string $baseSelector;
-    private array $gameMeta;
-
-    public function __construct(string $baseSelector = '#async-gameBatterStats', array $gameMeta)
-    {
-        $this->baseSelector = $baseSelector;
-        $this->gameMeta = $gameMeta;
-    }
+    public function __construct(
+        private array $gameMeta,
+        private string $rootSelector = '#async-gameBatterStats'
+    ) {}
 
     /**
      * 抽出本体
@@ -77,13 +72,23 @@ final class BatterStatsExtractor
      * ]
      * home: [ ... ]
      */
-    public function extract(Crawler $root): array
+    public function extract(Crawler $root, array $meta = []): array
     {
-        $base = $root->filter($this->baseSelector);
+        $base = $root->filter($this->rootSelector);
         if ($base->count() === 0) {
             return [
-                'away' => ['team_raw' => null, 'innings_count' => 0, 'players' => [], 'totals' => $this->emptyTotals()],
-                'home' => ['team_raw' => null, 'innings_count' => 0, 'players' => [], 'totals' => $this->emptyTotals()],
+                'away' => [
+                    'team_raw' => null,
+                    'innings_count' => 0,
+                    'players' => [],
+                    'totals' => $this->emptyTotals(),
+                ],
+                'home' => [
+                    'team_raw' => null,
+                    'innings_count' => 0,
+                    'players' => [],
+                    'totals' => $this->emptyTotals(),
+                ],
             ];
         }
 
@@ -95,7 +100,10 @@ final class BatterStatsExtractor
 
             // チームコードからチーム名を取得
             $teamCode = $this->extractTeamCodeFromClassAttr($table);
-            if ($teamCode !== null && isset($this->gameMeta['away']['team_code'], $this->gameMeta['home']['team_code'])) {
+            if (
+                $teamCode !== null &&
+                isset($this->gameMeta['away']['team_code'], $this->gameMeta['home']['team_code'])
+            ) {
                 $side = ($teamCode === $this->gameMeta['away']['team_code']) ? 'away' : 'home';
             } else {
                 // フォールバック: 打撃成績テーブルの並び順（1つ目=away, 2つ目=home）
@@ -295,7 +303,9 @@ final class BatterStatsExtractor
     {
         $p = trim($pos);
         // 全角/半角の括弧両対応
-        if ($p === '') return false;
+        if ($p === '') {
+            return false;
+        }
         $first = mb_substr($p, 0, 1);
         $last  = mb_substr($p, -1);
         return ($first === '(' && $last === ')') || ($first === '（' && $last === '）');
@@ -312,7 +322,9 @@ final class BatterStatsExtractor
     /** 選手ページのURLから選手IDを抽出 */
     private function extractPlayerId(?string $href): ?int
     {
-        if (!is_string($href)) return null;
+        if (!is_string($href)) {
+            return null;
+        }
         if (preg_match('#/npb/player/(\d+)/#', $href, $m)) {
             return (int)$m[1];
         }
@@ -337,6 +349,18 @@ final class BatterStatsExtractor
 
     private function emptyTotals(): array
     {
-        return ['AB' => 0, 'R' => 0, 'H' => 0, 'RBI' => 0, 'SO' => 0, 'BB' => 0, 'HBP' => 0, 'SH' => 0, 'SB' => 0, 'E' => 0, 'HR' => 0];
+        return [
+            'AB' => 0,
+            'R' => 0,
+            'H' => 0,
+            'RBI' => 0,
+            'SO' => 0,
+            'BB' => 0,
+            'HBP' => 0,
+            'SH' => 0,
+            'SB' => 0,
+            'E' => 0,
+            'HR' => 0
+        ];
     }
 }

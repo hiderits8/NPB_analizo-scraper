@@ -25,12 +25,23 @@ use Symfony\Component\DomCrawler\Crawler;
  */
 final class GameStatsScraper
 {
-    private const BASE = 'https://baseball.yahoo.co.jp';
+    private ClientInterface $http;
+    private string $scoreboardSelector;
+    private string $batterSelector;
+    private string $pitcherSelector;
+
 
     public function __construct(
-        private ClientInterface $http,
-        private ?string $scoreboardSelector = '#async-inning' // （/stats に同要素が無い試合もあるが、再パースせずに動く）
-    ) {}
+        ClientInterface $http,
+        string $scoreboardSelector = '#async-inning',
+        string $batterSelector = '#async-gameBatterStats',
+        string $pitcherSelector = '#async-gamePitcherStats',
+    ) {
+        $this->http = $http;
+        $this->scoreboardSelector = $scoreboardSelector;
+        $this->batterSelector = $batterSelector;
+        $this->pitcherSelector = $pitcherSelector;
+    }
 
     /**
      * @param string $url 例: https://baseball.yahoo.co.jp/npb/game/2021029839/stats
@@ -59,11 +70,11 @@ final class GameStatsScraper
 
         // --- 2) 成績抽出（打撃/投球）— 今後ここで GameStatsScraper 専用の解析を行う
         // 打者成績 
-        $battingStats = new BatterStatsExtractor('#async-gameBatterStats', $gameMeta)
+        $battingStats = new BatterStatsExtractor($gameMeta, $this->batterSelector)
             ->extract($crawler, /* meta */ []);
 
         // 投手成績
-        $pitchingStats = new PitcherStatsExtractor('#async-gamePitcherStats', $gameMeta)
+        $pitchingStats = new PitcherStatsExtractor($gameMeta, $this->pitcherSelector)
             ->extract($crawler, /* meta */ []);
 
         return [
