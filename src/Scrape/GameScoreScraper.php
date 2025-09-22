@@ -6,12 +6,16 @@ namespace App\Scrape;
 
 use GuzzleHttp\ClientInterface;
 use Symfony\Component\DomCrawler\Crawler;
+use App\Scrape\FieldBsoExtractor;
+use App\Scrape\ResultEventExtractor;
+
 
 final class GameScoreScraper
 {
     public function __construct(
         private ClientInterface $http,
         private string $fieldBsoSelector = '#async-fieldBso',
+        private string $resultEventSelector = '#result',
     ) {}
 
     /**
@@ -27,11 +31,15 @@ final class GameScoreScraper
         // 1.1: BSO/スコア小表/見出し（回・表裏 or 試合終了）
         $fieldBso = (new FieldBsoExtractor($this->fieldBsoSelector))->extract($root);
 
-        // 今後 1.2〜1.5, 3.1〜3.3 を順次追加していく想定
+        // 1.2: 結果イベント
+        $resultEvent = (new ResultEventExtractor($this->resultEventSelector))->extract($root);
+
+        // 今後 1.3〜1.5, 3.1〜3.3 を順次追加していく想定
         return [
             'url'       => $url,
             'game_meta' => $gameMeta,
             'field_bso' => $fieldBso,
+            'result_event' => $resultEvent,
         ];
     }
 }
