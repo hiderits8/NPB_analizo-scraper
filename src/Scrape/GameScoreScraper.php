@@ -17,7 +17,6 @@ final class GameScoreScraper
         private string $fieldBsoSelector = '#async-fieldBso',
         private string $resultEventSelector = '#result',
     ) {}
-
     /**
      * @param string $url 例: https://baseball.yahoo.co.jp/npb/game/2021029839/score?index=0110100
      * @param array  $gameMeta 任意: ['away'=>['team_code'=>..,'team_raw'=>..], 'home'=>[...]]

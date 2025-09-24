@@ -32,8 +32,7 @@ use App\Util\TextNormalizer;
  *   <em>17回戦：西武 9勝8敗0分</em>
  * </div>
  *
- * ポリシー:
- * - この抽出器は pbp の「イベント種別」を決めることを主目的にする。
+ * - pbp の「イベント種別」を抽出する
  * - 投球情報（球速/球種など）や、ランナー状況はここでは解析しない（別セクションで取得）。
  *   -> raw テキストは保持（後工程で必要なら解析できるように）。
  *
@@ -59,12 +58,22 @@ use App\Util\TextNormalizer;
  *         ],
  *       ],
  *   ],
+ *   'steals'        => [               // 複数対応
+ *       [
+ *         'type'  => 'success'|'failure',
+ *         'runner' => '外崎',
+ *       ],
+ *   ],
  * ]
  */
 final class ResultEventExtractor
 {
     public function __construct(private string $rootSelector = '#result') {}
 
+    /**
+     * @param Crawler $root
+     * @return array<string, mixed>
+     */
     public function extract(Crawler $root): array
     {
         $box = $root->filter($this->rootSelector);
@@ -81,7 +90,7 @@ final class ResultEventExtractor
         $emText   = $this->norm($em->count() ? $em->text('') : '');
 
         // 複数イベント種別に対応
-        $eventTypes = $this->detectEventTypes($spanText);
+        $eventTypes = $this->detectEventTypes($spanText, $emText);
 
         // is_hit は <span class="red"> の有無のみで判定
         $isHit = str_contains($spanCls, 'red');
@@ -120,6 +129,30 @@ final class ResultEventExtractor
             }
         }
 
+        $steals = [];
+        if (in_array('steal_success', $eventTypes, true)) {
+            $content = $this->extractGroupContent($emText, '盗塁成功');
+            $content = preg_match('/【盗塁成功】(.+?)/', $content, $m);
+            if ($m2 = preg_split('/、/u', $m[1])) {
+                foreach ($m2 as $m3) {
+                    $steals[] = ['type' => 'success', 'runner' => $m3];
+                }
+            } else {
+                $steals[] = ['type' => 'success', 'runner' => $m[1]];
+            }
+        }
+        if (in_array('steal_failure', $eventTypes, true)) {
+            $content = $this->extractGroupContent($emText, '盗塁失敗');
+            $content = preg_match('/【盗塁失敗】(.+?)/', $content, $m);
+            if ($m2 = preg_split('/、/u', $m[1])) {
+                foreach ($m2 as $m3) {
+                    $steals[] = ['type' => 'failure', 'runner' => $m3];
+                }
+            } else {
+                $steals[] = ['type' => 'failure', 'runner' => $m[1]];
+            }
+        }
+
         return [
             'event_types'     => $eventTypes,
             'primary_raw'     => $spanText !== '' ? $spanText : null,
@@ -127,6 +160,7 @@ final class ResultEventExtractor
             'is_hit'          => $isHit,
             'runs_add'        => $runsAdd,
             'substitutions'   => $subs ?: null,
+            'steals'          => $steals ?: null,
         ];
     }
 
@@ -141,7 +175,7 @@ final class ResultEventExtractor
             'is_hit'        => false,
             'runs_add'      => 0,
             'substitutions' => null,
-            'substitution'  => null,
+            'steals'        => null,
         ];
     }
 
@@ -149,7 +183,7 @@ final class ResultEventExtractor
      * イベント種別判定（複数）
      * 例: "【継投】…、【守備】…" -> ['sub_pitcher','defense']
      */
-    private function detectEventTypes(string $primary): array
+    private function detectEventTypes(string $primary, string $emText): array
     {
         $primary = $this->norm($primary);
         if ($primary === '') {
@@ -175,6 +209,15 @@ final class ResultEventExtractor
             $types[] = 'defense';
         }
 
+        $ems = preg_split('/、/u', $emText);
+        foreach ($ems as $em) {
+            if ($this->StealSuccess($em)) {
+                $types[] = 'steal_success';
+            } elseif ($this->StealFailure($em)) {
+                $types[] = 'steal_failure';
+            }
+        }
+
         // 何も該当しなければ通常プレイ
         if ($types === []) {
             return ['play'];
@@ -182,13 +225,23 @@ final class ResultEventExtractor
         return $types;
     }
 
+    private function StealSuccess(string $emText): bool
+    {
+        return preg_match('/【盗塁成功】/u', $emText);
+    }
+
+    private function StealFailure(string $emText): bool
+    {
+        return preg_match('/【盗塁失敗】/u', $emText);
+    }
+
     /**
      * "【ラベル】..." から当該ラベルの内容部分だけを切り出す（次の "【" 直前まで）
      */
-    private function extractGroupContent(string $primary, string $label): ?string
+    private function extractGroupContent(string $str, string $label): ?string
     {
         $pattern = '/【' . preg_quote($label, '/') . '】([^【]+)/u';
-        if (preg_match($pattern, $primary, $m)) {
+        if (preg_match($pattern, $str, $m)) {
             $content = rtrim($m[1], "、, 　\t\n\r");
             return $this->norm($content);
         }
@@ -207,11 +260,12 @@ final class ResultEventExtractor
 
     private function parseArrowPairs(string $primary): array
     {
-        $s = preg_replace('/^［【].*?[】］/u', '', $primary) ?? $primary;
+        $s = preg_replace('/^【.*?】/u', '', $primary) ?? $primary;
         $s = $this->norm($s);
 
         $items = [];
-        foreach (preg_split('/、/u', $s) as $chunk) {
+        $chunks = preg_split('/、/u', $s);
+        foreach ($chunks as $chunk) {
             $chunk = trim($chunk);
             if ($chunk === '') continue;
             if (preg_match('/(.+?)\s*→\s*(.+)/u', $chunk, $m)) {
@@ -277,7 +331,18 @@ final class ResultEventExtractor
     private function toAsciiDigits(string $s): string
     {
         // 全角数字→半角
-        $map = ['０' => '0', '１' => '1', '２' => '2', '３' => '3', '４' => '4', '５' => '5', '６' => '6', '７' => '7', '８' => '8', '９' => '9'];
+        $map = [
+            '０' => '0',
+            '１' => '1',
+            '２' => '2',
+            '３' => '3',
+            '４' => '4',
+            '５' => '5',
+            '６' => '6',
+            '７' => '7',
+            '８' => '8',
+            '９' => '9'
+        ];
         return strtr($s, $map);
     }
 }
