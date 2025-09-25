@@ -16,6 +16,8 @@ final class GameScoreScraper
         private ClientInterface $http,
         private string $fieldBsoSelector = '#async-fieldBso',
         private string $resultEventSelector = '#result',
+        private string $baseRunnersSelector = '#field',
+        private string $dakyuSelector = '#field',
     ) {}
     /**
      * @param string $url 例: https://baseball.yahoo.co.jp/npb/game/2021029839/score?index=0110100
@@ -32,6 +34,14 @@ final class GameScoreScraper
 
         // 1.2: 結果イベント
         $resultEvent = (new ResultEventExtractor($this->resultEventSelector))->extract($root);
+
+        // 1.3: 走者
+        $baseRunners = (new BaseRunnersExtractor($this->baseRunnersSelector))->extract($root);
+
+        // 1.3.1: 打球
+        $dakyu = (new DakyuResultExtractor($this->dakyuSelector))->extract($root);
+
+
 
         // 今後 1.3〜1.5, 3.1〜3.3 を順次追加していく想定
         return [
