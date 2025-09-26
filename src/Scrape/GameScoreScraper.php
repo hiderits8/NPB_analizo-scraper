@@ -17,7 +17,7 @@ final class GameScoreScraper
         private string $fieldBsoSelector = '#async-fieldBso',
         private string $resultEventSelector = '#result',
         private string $baseRunnersSelector = '#field',
-        private string $dakyuSelector = '#field',
+        private string $dakyuSelector = '#field'
     ) {}
     /**
      * @param string $url 例: https://baseball.yahoo.co.jp/npb/game/2021029839/score?index=0110100
@@ -30,16 +30,19 @@ final class GameScoreScraper
         $root  = new Crawler($html);
 
         // 1.1: BSO/スコア小表/見出し（回・表裏 or 試合終了）
-        $fieldBso = (new FieldBsoExtractor($this->fieldBsoSelector))->extract($root);
+        $fieldBso = new FieldBsoExtractor($this->fieldBsoSelector)->extract($root);
 
         // 1.2: 結果イベント
-        $resultEvent = (new ResultEventExtractor($this->resultEventSelector))->extract($root);
+        $resultEvent = new ResultEventExtractor($this->resultEventSelector)->extract($root);
 
         // 1.3: 走者
-        $baseRunners = (new BaseRunnersExtractor($this->baseRunnersSelector))->extract($root);
+        $baseRunners = new BaseRunnersExtractor($this->baseRunnersSelector)->extract($root);
 
         // 1.3.1: 打球
-        $dakyu = (new DakyuResultExtractor($this->dakyuSelector))->extract($root);
+        $dakyu = new DakyuResultExtractor($this->dakyuSelector)->extract($root);
+
+        // 1.4: 投手・打者・次打者
+        $pitchBatterPanel = new PitchBatterPanelExtractor()->extract($root);
 
 
 
@@ -49,6 +52,9 @@ final class GameScoreScraper
             'game_meta' => $gameMeta,
             'field_bso' => $fieldBso,
             'result_event' => $resultEvent,
+            'base_runners' => $baseRunners,
+            'dakyu' => $dakyu,
+            'pitch_batter_panel' => $pitchBatterPanel,
         ];
     }
 }
