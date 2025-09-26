@@ -17,7 +17,8 @@ final class GameScoreScraper
         private string $fieldBsoSelector = '#async-fieldBso',
         private string $resultEventSelector = '#result',
         private string $baseRunnersSelector = '#field',
-        private string $dakyuSelector = '#field'
+        private string $dakyuSelector = '#field',
+        private string $replayNavSelector = '#replay'
     ) {}
     /**
      * @param string $url 例: https://baseball.yahoo.co.jp/npb/game/2021029839/score?index=0110100
@@ -44,6 +45,9 @@ final class GameScoreScraper
         // 1.4: 投手・打者・次打者
         $pitchBatterPanel = new PitchBatterPanelExtractor()->extract($root);
 
+        // 1.5: リプレイナビ
+        $replayNav = new ReplayNavExtractor($this->replayNavSelector)->extract($root);
+
 
 
         // 今後 1.3〜1.5, 3.1〜3.3 を順次追加していく想定
@@ -55,6 +59,7 @@ final class GameScoreScraper
             'base_runners' => $baseRunners,
             'dakyu' => $dakyu,
             'pitch_batter_panel' => $pitchBatterPanel,
+            'replay_nav' => $replayNav,
         ];
     }
 }

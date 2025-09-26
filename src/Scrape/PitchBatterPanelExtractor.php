@@ -33,7 +33,7 @@ final class PitchBatterPanelExtractor
 {
     public function __construct(
         private string $pitcherRoot     = '#pit',
-        private string $pitcherCardPath = '#pitcherR .card table.ct',
+        private string $pitcherCardPath = '.card table.ct',
         private string $batterRoot      = '#batter',
         private string $batterTableSel  = '#batt, table.ct', // どちらかが使われる
         private string $nextBatterRoot  = '#nxt_batt'
