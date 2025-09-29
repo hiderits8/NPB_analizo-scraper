@@ -19,7 +19,7 @@ final class GameScoreScraper
         private string $baseRunnersSelector = '#field',
         private string $dakyuSelector = '#field',
         private string $replayNavSelector = '#replay',
-        private string $pitchResultTableSelector = '#pitchesDetail'
+        private string $pitchesDetailSelector = '#pitchesDetail'
     ) {}
     /**
      * @param string $url 例: https://baseball.yahoo.co.jp/npb/game/2021029839/score?index=0110100
@@ -49,11 +49,11 @@ final class GameScoreScraper
         // 1.5: リプレイナビ
         $replayNav = new ReplayNavExtractor($this->replayNavSelector)->extract($root);
 
-        // 3.1
+        // 3.1 コース図
+        $pitchCourseChart = new PitchCourseChartExtractor($this->pitchesDetailSelector)->extract($root);
 
-
-        // 3.2 投球明細
-        $pitchResultTable = new PitchResultTableExtractor($this->pitchResultTableSelector)->extract($root);
+        // 3.2 投球明細テーブル
+        $pitchResultTable = new PitchResultTableExtractor($this->pitchesDetailSelector)->extract($root);
 
 
         // 今後 1.3〜1.5, 3.1〜3.3 を順次追加していく想定
@@ -66,6 +66,7 @@ final class GameScoreScraper
             'dakyu' => $dakyu,
             'pitch_batter_panel' => $pitchBatterPanel,
             'replay_nav' => $replayNav,
+            'pitch_course_chart' => $pitchCourseChart,
             'pitch_result_table' => $pitchResultTable,
         ];
     }
