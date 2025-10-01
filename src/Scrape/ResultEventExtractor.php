@@ -131,8 +131,7 @@ final class ResultEventExtractor
 
         $steals = [];
         if (in_array('steal_success', $eventTypes, true)) {
-            $content = $this->extractGroupContent($emText, '盗塁成功');
-            $content = preg_match('/【盗塁成功】(.+?)/', $content, $m);
+            $content = preg_match('/盗塁成功（(.+?)）/', $emText, $m);
             if ($m2 = preg_split('/、/u', $m[1])) {
                 foreach ($m2 as $m3) {
                     $steals[] = ['type' => 'success', 'runner' => $m3];
@@ -142,8 +141,7 @@ final class ResultEventExtractor
             }
         }
         if (in_array('steal_failure', $eventTypes, true)) {
-            $content = $this->extractGroupContent($emText, '盗塁失敗');
-            $content = preg_match('/【盗塁失敗】(.+?)/', $content, $m);
+            $content = preg_match('/盗塁失敗（(.+?)）/', $emText, $m);
             if ($m2 = preg_split('/、/u', $m[1])) {
                 foreach ($m2 as $m3) {
                     $steals[] = ['type' => 'failure', 'runner' => $m3];
@@ -208,6 +206,9 @@ final class ResultEventExtractor
         if (mb_strpos($primary, '【守備】') !== false) {
             $types[] = 'defense';
         }
+        if (mb_strpos($primary, '敬遠（申告敬遠）') !== false) {
+            $types[] = 'intentional_base_on_balls';
+        }
 
         $ems = preg_split('/、/u', $emText);
         foreach ($ems as $em) {
@@ -227,12 +228,12 @@ final class ResultEventExtractor
 
     private function StealSuccess(string $emText): bool
     {
-        return preg_match('/【盗塁成功】/u', $emText);
+        return preg_match('/盗塁成功/u', $emText) === 1;
     }
 
     private function StealFailure(string $emText): bool
     {
-        return preg_match('/【盗塁失敗】/u', $emText);
+        return preg_match('/盗塁失敗/u', $emText) === 1;
     }
 
     /**
@@ -285,10 +286,7 @@ final class ResultEventExtractor
      */
     private function parseDefenseItems(string $primary): array
     {
-        // 先頭の【守備】が付いていれば除去（付いていなければ何もしない）
-        $s = preg_replace('/^［【]?守備［】]?/u', '', $primary) ?? $primary;
-        $s = $this->norm($s);
-        $s = ltrim($s, '：:、 ');
+        $s = $this->norm($primary);
 
         $items = [];
         foreach (preg_split('/、/u', $s) as $seg) {

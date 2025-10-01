@@ -51,7 +51,9 @@ final class PitchResultTableExtractor
 
     public function extract(Crawler $root): array
     {
-        $section = $root->filter($this->rootSelector);
+        $section = $root->filter($this->rootSelector)->filter('section')->reduce(function (Crawler $node, $i) {
+            return $node->attr("id") !== "gm_mema" && $node->attr("id") !== "gm_memh";
+        });
         if ($section->count() === 0) {
             return $this->empty();
         }
