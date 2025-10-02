@@ -54,9 +54,6 @@ final class PitchResultTableExtractor
         $section = $root->filter($this->rootSelector)->filter('section')->reduce(function (Crawler $node, $i) {
             return $node->attr("id") !== "gm_mema" && $node->attr("id") !== "gm_memh";
         });
-        if ($section->count() === 0) {
-            return $this->empty();
-        }
 
         // 打者・投手のペア（#gm_rslt）
         $gm = $section->filter('table#gm_rslt');
@@ -66,7 +63,7 @@ final class PitchResultTableExtractor
             [$batter, $pitcher] = $this->parseBatterPitcher($gm);
         }
 
-        // 投球明細テーブル（最初の bb-splitsTable で id!=gm_rslt）
+        // id=gm_rsltは投手・打者ペアテーブルで確定なので、以降はそれ以外のテーブルを読む
         $detailTables = $section->filter('table.bb-splitsTable')->reduce(function (Crawler $node, $i) {
             return (string)$node->attr('id') !== 'gm_rslt';
         });

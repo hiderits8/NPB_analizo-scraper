@@ -41,6 +41,7 @@ use App\Util\TextNormalizer;
  *   'event_types'   => ['play', 'sub_runner', ...],  // 複数対応
  *   'primary_raw'   => '中安打 ＋1点',
  *   'detail_raw'    => '140km/h カットボール、ランナー1,2塁',  // あれば
+ *   'seq_in_pa'    => 3,               // その打席内での通算イベント番号（0から始まる連番） 0=>打席開始前, 1=>1球目, 2=>2球目, ...
  *   'is_hit'       => true,            // <span class="red"> なら true
  *   'runs_add'     => 1,               // 表記に「＋n点」を含めば数値、なければ 0
  *   'substitutions' => [               // 複数対応
@@ -91,6 +92,9 @@ final class ResultEventExtractor
 
         // 複数イベント種別に対応
         $eventTypes = $this->detectEventTypes($spanText, $emText);
+
+        // その打席内での通算イベント番号（0から始まる連番）を検出
+        $seqInPa = $this->detectSeqInPa($root);
 
         // is_hit は <span class="red"> の有無のみで判定
         $isHit = str_contains($spanCls, 'red');
@@ -155,6 +159,7 @@ final class ResultEventExtractor
             'event_types'     => $eventTypes,
             'primary_raw'     => $spanText !== '' ? $spanText : null,
             'detail_raw'      => $emText   !== '' ? $emText   : null,
+            'seq_in_pa'       => $seqInPa,
             'is_hit'          => $isHit,
             'runs_add'        => $runsAdd,
             'substitutions'   => $subs ?: null,
@@ -170,6 +175,7 @@ final class ResultEventExtractor
             'event_types'   => ['announcement'],
             'primary_raw'   => null,
             'detail_raw'    => null,
+            'seq_in_pa'     => 0,
             'is_hit'        => false,
             'runs_add'      => 0,
             'substitutions' => null,
@@ -321,9 +327,46 @@ final class ResultEventExtractor
         return $items;
     }
 
+    /**
+     * その打席内での通算イベント番号（0から始まる連番）を検出
+     * 例: 0=>打席開始前, 1=>1球目, 2=>2球目, ...
+     */
+    private function detectSeqInPa(Crawler $root): int
+    {
+        $section = $root->filter('#pitchesDetail')->filter('section')->reduce(function (Crawler $node, $i) {
+            return $node->attr("id") !== "gm_mema" && $node->attr("id") !== "gm_memh";
+        });
+        // id=gm_rsltは投手・打者ペアテーブルで確定なので、以降はそれ以外のテーブルを読む
+        $detailTables = $section->filter('table.bb-splitsTable')->reduce(function (Crawler $node, $i) {
+            return (string)$node->attr('id') !== 'gm_rslt';
+        });
+
+        if ($detailTables->count() === 1) {
+            // セクションはあるが、空のコーステーブル1つのみで、投球明細が無い場合（= 継投/回開始/試合終了）ケース
+            return 0;
+        }
+
+        $detail     = $detailTables->last();
+        $lastRow    = $detail->filter('tbody > tr')->last();
+        $icon       = $lastRow->filter('.bb-icon__ballCircle');
+        $seqInPa    = $this->toInt($icon->text(''));
+        return $seqInPa;
+    }
+
     private function norm(string $s): string
     {
         return TextNormalizer::normalizeJaName($s);
+    }
+
+    private function toInt(string $s): int
+    {
+        $s = trim($s);
+        if ($s === '') return 0;
+        // 全角→半角
+        $s = strtr($s, ['０' => '0', '１' => '1', '２' => '2', '３' => '3', '４' => '4', '５' => '5', '６' => '6', '７' => '7', '８' => '8', '９' => '9']);
+        // 数字抽出
+        if (preg_match('/\d+/', $s, $m)) return (int)$m[0];
+        return 0;
     }
 
     private function toAsciiDigits(string $s): string
