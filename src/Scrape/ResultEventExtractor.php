@@ -41,9 +41,9 @@ use App\Util\TextNormalizer;
  *   'event_types'   => ['play', 'sub_runner', ...],  // 複数対応
  *   'primary_raw'   => '中安打 ＋1点',
  *   'detail_raw'    => '140km/h カットボール、ランナー1,2塁',  // あれば
- *   'seq_in_pa'    => 3,               // その打席内での通算イベント番号（0から始まる連番） 0=>打席開始前, 1=>1球目, 2=>2球目, ...
- *   'is_hit'       => true,            // <span class="red"> なら true
- *   'runs_add'     => 1,               // 表記に「＋n点」を含めば数値、なければ 0
+ *   'seq_in_pa'     => 3,               // その打席内での通算イベント番号（0から始まる連番） 0=>打席開始前, 1=>1球目, 2=>2球目, ...
+ *   'is_hit'        => true,            // <span class="red"> なら true
+ *   'runs_add'      => 1,               // 表記に「＋n点」を含めば数値、なければ 0
  *   'substitutions' => [               // 複数対応
  *       [
  *         'kind'  => 'runner'|'batter'|'pitcher'|'defense',

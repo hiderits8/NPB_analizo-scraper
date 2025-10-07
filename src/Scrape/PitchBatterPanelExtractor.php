@@ -23,11 +23,11 @@ use App\Util\TextNormalizer;
  * - 個人ページ URL や通算レート（防御率/打率等）は取得しない
  * 
  * 返り値
- * {
- *   pitcher: null|array{name_raw:string, number:int|null, hand_text:string|null, bf:int|null},
- *   batter:  null|array{name_raw:string, number:int|null, hand_text:string|null},
- *   next_batter: null|string
- * }
+ * [
+ *   'pitcher'      => null|array{name_raw:string, number:int|null, hand_text:string|null, bf:int|null},
+ *   'batter'       => null|array{name_raw:string, number:int|null, hand_text:string|null},
+ *   'next_batter'  => null|string
+ * ]
  */
 final class PitchBatterPanelExtractor
 {
