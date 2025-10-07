@@ -149,7 +149,7 @@ class PlayByPlay {
   + runner_first_id : INT <<FK>> // 1塁走者（NULL可）
   + runner_second_id : INT <<FK>> // 2塁走者（NULL可）
   + runner_third_id : INT <<FK>> // 3塁走者（NULL可）
-  + event_type : VARCHAR(50) // イベント種別（例: play, substitution, pitch, steal, error, advancement, wild_pitch, passed_ball, interference）
+  + event_type : VARCHAR(50) // イベント種別（例: substitution, pitch, steal, error, advancement, other）
   + created_at : DATETIME // 作成日時
   + updated_at : DATETIME // 更新日時
 }
