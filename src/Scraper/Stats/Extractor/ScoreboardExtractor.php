@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Scrape;
+namespace App\Scraper\Stats\Extractor;
 
 use Symfony\Component\DomCrawler\Crawler;
 use App\Util\TextNormalizer;

@@ -2,12 +2,18 @@
 
 declare(strict_types=1);
 
-namespace App\Scrape;
+namespace App\Scraper\Score;
 
 use GuzzleHttp\ClientInterface;
 use Symfony\Component\DomCrawler\Crawler;
-use App\Scrape\FieldBsoExtractor;
-use App\Scrape\ResultEventExtractor;
+use App\Scraper\Score\Extractor\FieldBsoExtractor;
+use App\Scraper\Score\Extractor\ResultEventExtractor;
+use App\Scraper\Score\Extractor\BaseRunnersExtractor;
+use App\Scraper\Score\Extractor\DakyuResultExtractor;
+use App\Scraper\Score\Extractor\PitchBatterPanelExtractor;
+use App\Scraper\Score\Extractor\ReplayNavExtractor;
+use App\Scraper\Score\Extractor\PitchCourseChartExtractor;
+use App\Scraper\Score\Extractor\PitchResultTableExtractor;
 
 
 final class GameScoreScraper

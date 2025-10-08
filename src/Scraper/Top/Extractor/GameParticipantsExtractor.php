@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Scrape;
+namespace App\Scraper\Top\Extractor;
 
 use GuzzleHttp\ClientInterface;
 use Symfony\Component\DomCrawler\Crawler;
@@ -21,7 +21,7 @@ use Symfony\Component\DomCrawler\Crawler;
  *    'away' => [ ... 同上 ... ]
  *  ]
  */
-final class GameParticipantsScraper
+final class GameParticipantsExtractor
 {
     private ClientInterface $http;
 

@@ -2,10 +2,14 @@
 
 declare(strict_types=1);
 
-namespace App\Scrape;
+namespace App\Scraper\Stats;
 
 use GuzzleHttp\ClientInterface;
 use Symfony\Component\DomCrawler\Crawler;
+
+use App\Scraper\Stats\Extractor\ScoreboardExtractor;
+use App\Scraper\Stats\Extractor\BatterStatsExtractor;
+use App\Scraper\Stats\Extractor\PitcherStatsExtractor;
 
 /**
  * GameStatsScraper
@@ -53,7 +57,7 @@ final class GameStatsScraper
 
         // --- 1) スコアボード（抽出器に Crawler を渡す） -----------------------
         // /stats に #async-inning が無いケースでは、抽出器側が空の既定値を返す。
-        $scoreboard = (new ScoreboardExtractor($this->scoreboardSelector))
+        $scoreboard = new ScoreboardExtractor($this->scoreboardSelector)
             ->extract($crawler, /* meta */ []);
 
         // 試合のメタ情報を設定

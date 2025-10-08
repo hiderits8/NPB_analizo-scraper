@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace App\Scrape;
+namespace App\Scraper\Top\Extractor;
 
 use GuzzleHttp\ClientInterface;
 use Symfony\Component\DomCrawler\Crawler;
 use App\Resolver\Resolver;
 
-final class GameMetaScraper
+final class GameMetaExtractor
 {
     private ClientInterface $http;
     private Resolver $resolver;
