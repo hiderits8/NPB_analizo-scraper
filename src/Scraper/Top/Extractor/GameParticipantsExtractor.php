@@ -2,8 +2,8 @@
 
 namespace App\Scraper\Top\Extractor;
 
-use GuzzleHttp\ClientInterface;
 use Symfony\Component\DomCrawler\Crawler;
+use App\Util\TextNormalizer;
 
 /**
  * 試合参加者をスクレイピングするクラス
@@ -23,58 +23,35 @@ use Symfony\Component\DomCrawler\Crawler;
  */
 final class GameParticipantsExtractor
 {
-    private ClientInterface $http;
-
-    public function __construct(ClientInterface $http)
-    {
-        $this->http = $http;
-    }
+    public function __construct(
+        private string $startingBlockSelector = '#async-starting .bb-splits .bb-splits__item',
+        private string $benchBlockSelector = '#async-bench'
+    ) {}
 
     /**
      * トップページから参加選手（スタメン＋ベンチ）を抽出
      *
-     * @param string $url 例: https://baseball.yahoo.co.jp/npb/game/2021030952/top
      * @return array{
      *   home: array{starters: list<array{name:string,slot:int,position:?string}>, bench: list<array{name:string}>>,
      *   away: array{starters: list<array{name:string,slot:int,position:?string}>, bench: list<array{name:string}>>
      * }
      */
-    public function scrape(string $url): array
+    public function extract(Crawler $root): array
     {
-        $html = (string) $this->http->request('GET', $url)->getBody();
-        $crawler = new Crawler($html);
-
         $home = ['starters' => [], 'bench' => []];
         $away = ['starters' => [], 'bench' => []];
 
         // --- スタメン（先発野手の打順テーブル） ---
-        $startingBlocks = $this->findStartingBlocks($crawler);
+        $startingBlocks = $root->filter($this->startingBlockSelector);
         $home['starters'] = $this->scrapeStartingMenbers($startingBlocks, 'home') ?? [];
         $away['starters'] = $this->scrapeStartingMenbers($startingBlocks, 'away') ?? [];
 
         // --- ベンチ（一軍のみ。無ければ空） ---
-        $benchBlocks = $this->findBenchBlocks($crawler);
+        $benchBlocks = $root->filter($this->benchBlockSelector);
         $home['bench'] = $this->scrapeBenchMenbers($benchBlocks, 'home') ?? [];
         $away['bench'] = $this->scrapeBenchMenbers($benchBlocks, 'away') ?? [];
 
         return ['home' => $home, 'away' => $away];
-    }
-
-    /**
-     * スタメン領域（bb-splits__item を2つ含むコンテナ）を返す
-     */
-    private function findStartingBlocks(Crawler $crawler): Crawler
-    {
-        // #async-starting 配下の .bb-splits__item を2つ想定
-        return $crawler->filter('#async-starting .bb-splits .bb-splits__item');
-    }
-
-    /**
-     * ベンチ領域のルート（#async-bench 全体）を返す
-     */
-    private function findBenchBlocks(Crawler $crawler): Crawler
-    {
-        return $crawler->filter('#async-bench');
     }
 
     /**
@@ -131,7 +108,6 @@ final class GameParticipantsExtractor
                 $rows[] = ['name' => $name, 'slot' => $slot, 'position' => $pos];
             }
         }
-
 
         // DHあり等で打順に投手が含まれない場合、投手テーブルから先発投手を補完
         $hasPitcherInLineup = false;
@@ -191,12 +167,8 @@ final class GameParticipantsExtractor
         return array_map(fn($n) => ['name' => $n], array_keys($names));
     }
 
-    /** 余計な空白・ゼロ幅スペース等を整理 */
     private function norm(string $s): string
     {
-        $s = trim($s);
-        $s = preg_replace('/\s+/u', ' ', $s) ?? $s;
-        $s = preg_replace('/[\x{200B}-\x{200D}\x{FEFF}]/u', '', $s) ?? $s;
-        return $s;
+        return TextNormalizer::normalizeJaName($s);
     }
 }

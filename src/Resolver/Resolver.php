@@ -12,13 +12,10 @@ use App\Resolver\AliasNormalizer;
 final class Resolver
 {
 
-    /** @var array<int, array{team_id:int, team_name:string, league:string, level:string, club_id:int}> */
+
     private $teams;
-    /** @var array<int, array{stadium_id:int, stadium_name:string}> */
     private $stadiums;
-    /** @var array<int, array{club_id:int, club_name:string}> */
     private $clubs;
-    /** @var AliasNormalizer */
     private AliasNormalizer $alias;
 
     /**

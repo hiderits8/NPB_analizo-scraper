@@ -3,7 +3,7 @@
 
 declare(strict_types=1);
 
-use App\Scrape\GameScoreScraper;
+use App\Scraper\Score\GameScoreScraper;
 
 require_once __DIR__ . '/_bootstrap.php';
 

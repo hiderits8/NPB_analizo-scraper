@@ -135,8 +135,7 @@ final class GameScoreScraper
      */
     public function scrape(string $url, array $gameMeta = []): array
     {
-        $res   = $this->http->request('GET', $url);
-        $html  = (string) $res->getBody();
+        $html  = (string) $this->http->request('GET', $url)->getBody();
         $root  = new Crawler($html);
 
         // 1.1: BSO/スコア小表/見出し（回・表裏 or 試合終了）

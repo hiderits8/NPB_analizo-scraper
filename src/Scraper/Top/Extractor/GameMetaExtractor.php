@@ -10,14 +10,7 @@ use App\Resolver\Resolver;
 
 final class GameMetaExtractor
 {
-    private ClientInterface $http;
-    private Resolver $resolver;
-
-    public function __construct(ClientInterface $http, Resolver $resolver)
-    {
-        $this->http = $http;
-        $this->resolver = $resolver;
-    }
+    public function __construct(private Resolver $resolver) {}
 
     /**
      * @param string $url
@@ -37,20 +30,17 @@ final class GameMetaExtractor
      *  unresolved_map: array<string, string>, // 例: {"stadium":"ロッテ"}
      * }
      */
-    public function scrapeMeta(string $url, string $pageLevel): array
+    public function extract(Crawler $root, string $pageLevel): array
     {
-        $html = (string)$this->http->request('GET', $url)->getBody();
-        $crawler = new Crawler($html);
-
         // 試合日時・球場名
-        $date = $this->textOrNull($crawler, '#async-gameCard');
+        $date = $this->textOrNull($root, '#async-gameCard');
         if ($date !== null) {
             // 「日付／時間／球場」が同じブロックにいるので前側だけを抽出
             // 例: "9/7（日） 18:00 甲子園" → 最初の語を球場として扱う簡易版
             $date = trim(preg_replace('/^(\S+)\s+.*/u', '$1', preg_replace('/\s+/u', ' ', $date) ?? $date));
         }
-        $time = $this->textOrNull($crawler, '#async-gameCard time');
-        $stadium = $this->textOrNull($crawler, '#async-gameCard');
+        $time = $this->textOrNull($root, '#async-gameCard time');
+        $stadium = $this->textOrNull($root, '#async-gameCard');
         if ($stadium !== null) {
             // 「日付／時間／球場」が同じブロックにいるので後側だけを抽出
             // 例: "9/7（日） 18:00 甲子園" → 最後の語を球場として扱う簡易版
@@ -58,7 +48,7 @@ final class GameMetaExtractor
         }
 
         // チーム名（ホーム→アウェイの順で2ブロックある想定）
-        $teamNodes = $crawler->filter('div.bb-gameTeam p.bb-gameTeam__name');
+        $teamNodes = $root->filter('div.bb-gameTeam p.bb-gameTeam__name');
         $homeRaw = $teamNodes->count() >= 1 ? trim($teamNodes->eq(0)->text()) : null;
         $awayRaw = $teamNodes->count() >= 2 ? trim($teamNodes->eq(1)->text()) : null;
 
@@ -92,7 +82,6 @@ final class GameMetaExtractor
         $unresolved = array_values($unresolvedMap);
 
         return [
-            'url'            => $url,
             'date'           => $date,
             'time'           => $time,
             'home_team_name'   => $homeTeamName,
