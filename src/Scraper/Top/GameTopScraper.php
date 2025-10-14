@@ -11,7 +11,7 @@ use App\Scraper\Top\Extractor\GameMetaExtractor;
 use App\Scraper\Top\Extractor\GameParticipantsExtractor;
 use App\Resolver\Resolver;
 
-final class GameStatsScraper
+final class GameTopScraper
 {
     public function __construct(
         private ClientInterface $http,

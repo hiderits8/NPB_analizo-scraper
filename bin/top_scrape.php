@@ -1,36 +1,40 @@
+#!/usr/bin/env php
 <?php
 
 declare(strict_types=1);
 
-require_once dirname(__DIR__) . '/vendor/autoload.php';
-
 use App\Http\DictClient;
 use App\Resolver\Resolver;
 use App\Resolver\AliasNormalizer;
-use App\Scrape\GameMetaScraper;
-use App\Scrape\GameParticipantsScraper;
 use App\Resolver\AliasesLoader;
+use App\Scraper\Top\GameTopScraper;
 use GuzzleHttp\Client;
-use Dotenv\Dotenv;
 
-$root = \dirname(__DIR__);
-if (class_exists(Dotenv::class)) {
-    Dotenv::createImmutable($root)->safeLoad();
-}
+require_once __DIR__ . '/_bootstrap.php';
 
-$APP_QUIET   = getenv('APP_QUIET');
-$PENDING_DIR = $root . '/logs/pending_aliases';
-@mkdir($PENDING_DIR, 0777, true);
-@mkdir($PENDING_DIR . '/_resolved', 0777, true);
+// ---- args ----
+$opts = getopt('', [
+    'url:',        // required
+    'page-level:', // required First|Farm
+    'timeout::',   // optional int
+    'pretty',      // flag
+    'out-file::',  // optional path
+]);
 
-$url       = $argv[1] ?? null;         // e.g. https://baseball.yahoo.co.jp/npb/game/.../top
-$pageLevel = $argv[2] ?? null;         // First | Farm
-if (!$url || !in_array($pageLevel, ['First', 'Farm'], true)) {
-    if (!$APP_QUIET) fwrite(STDERR, "Usage: php bin/game_scrape.php <game-url> <First|Farm>\n");
-    exit(2);
-}
+$url = isset($opts['url']) ? (string)$opts['url'] : '';
+if ($url === '') fail(1, '--url is required');
+$pageLevel = isset($opts['page-level']) ? (string)$opts['page-level'] : '';
 
-// 1) API 辞書ロード
+$timeout = isset($opts['timeout'])
+    ? max(1, (int)$opts['timeout'])
+    : max(1, (int) $_ENV['HTTP_TIMEOUT_SECONDS'] ?? getenv('HTTP_TIMEOUT_SECONDS') ?? '15');
+$pretty  = array_key_exists('pretty', $opts);
+$outFile = isset($opts['out-file']) ? (string)$opts['out-file'] : null;
+
+// ---- fetch & scrape ----
+$http = make_http_client($timeout);
+
+// API 辞書ロード
 $apiBase    = $_ENV['APP_API_BASE']    ?? '';
 $apiTimeout = (int)($_ENV['APP_API_TIMEOUT'] ?? 10);
 
@@ -50,24 +54,8 @@ $resolver      = new Resolver($teams, $stadiums, $clubs, new AliasNormalizer($al
 
 // 3) スクレイプ
 try {
-    $scraper = new GameMetaScraper(new Client(['timeout' => 15]), $resolver);
-    /** 
-     * @var $result : array{
-     *  url: string, // 例: "https://baseball.yahoo.co.jp/npb/game/2021029801/top"
-     *  date: ?string, // 例: "9/7（日）"
-     *  time: ?string, // 例: "18:00"
-     *  stadium_raw: ?string, // 例: "甲子園"
-     *  home_team_raw: ?string, // 例: "阪神"
-     *  away_team_raw: ?string, // 例: "広島"
-     *  page_level: ?string, // First|Farm
-     *  home_team_id: ?int, 
-     *  away_team_id: ?int,
-     *  stadium_id: ?int,
-     *  unresolved: array<string, string>, // 例: ["ロッテ"]
-     *  unresolved_map: array<string, string>, // 例: {"stadium":"ロッテ"}
-     * }
-     */
-    $result  = $scraper->scrapeMeta($url, $pageLevel);
+    $scraper = new GameTopScraper($http, $resolver, $pageLevel);
+    $result  = $scraper->scrape($url);
 } catch (\Throwable $e) {
     // エラーログを保存
     $logDir = $root . '/logs';
@@ -78,7 +66,7 @@ try {
 }
 
 // 4) 未解決マップを作成 (スクレイパーが提供しない場合のフォールバック)
-$unresolvedMap = $result['unresolved_map'] ?? [];
+$unresolvedMap = $result['game_meta']['unresolved_map'] ?? [];
 
 if (empty($unresolvedMap)) {
     $pairs = [
@@ -148,16 +136,6 @@ if (!empty($catWise)) {
         fwrite(STDOUT, "db_write=skip (unresolved)\n");
     }
     exit(2);
-}
-
-// 6.5) 参加者（スタメン＋ベンチ）を出力（正常系のみ）。失敗しても致命にはしない。
-try {
-    $participants = (new GameParticipantsScraper(new Client(['timeout' => 15])))->scrape($url);
-} catch (\Throwable $e) {
-    $participants = ['home' => ['starters' => [], 'bench' => []], 'away' => ['starters' => [], 'bench' => []]];
-    $logDir = $root . '/logs';
-    if (!is_dir($logDir)) mkdir($logDir, 0777, true);
-    file_put_contents($logDir . '/error.log', sprintf('[%s] participants url=%s ERROR=%s\n', date('c'), $url, $e->getMessage()), FILE_APPEND);
 }
 
 // game_key は URL の数列（安定ID用途のみ）。日付ディレクトリは「今年 + $result['date'] の月日」
