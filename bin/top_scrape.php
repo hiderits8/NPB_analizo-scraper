@@ -8,7 +8,6 @@ use App\Resolver\Resolver;
 use App\Resolver\AliasNormalizer;
 use App\Resolver\AliasesLoader;
 use App\Scraper\Top\GameTopScraper;
-use GuzzleHttp\Client;
 
 require_once __DIR__ . '/_bootstrap.php';
 
