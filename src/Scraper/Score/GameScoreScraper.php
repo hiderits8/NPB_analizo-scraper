@@ -97,8 +97,8 @@ final class GameScoreScraper
      *                      'next_batter'       => '鈴木誠也',
      *                      ] | null,
      *  'replay_nav'    => [
-     *                      'prev'              => ['href' => '/npb/game/.../score?index=0910300', 'index' => '0910300'] | null,
-     *                      'next'              => ['href' => '/npb/game/.../score?index=0910401', 'index' => '0910401'] | null,
+     *                      'prev'              => ['href' => '?index=0910300', 'index' => '0910300'] | null,
+     *                      'next'              => ['href' => '?index=0910401', 'index' => '0910401'] | null,
      *                      'batter_ordinal'    => 4 | null,
      *                      ],
      *  'pitch_course_chart' => [

@@ -13,8 +13,8 @@ use Symfony\Component\DomCrawler\Crawler;
  *
  * 返り値例:
  * [
- *   'prev' => ['href' => '/npb/game/.../score?index=0910300', 'index' => '0910300'] | null,
- *   'next' => ['href' => '/npb/game/.../score?index=0910401', 'index' => '0910401'] | null,
+ *   'prev' => ['href' => '?index=0910300', 'index' => '0910300'] | null,
+ *   'next' => ['href' => '?index=0910401', 'index' => '0910401'] | null,
  *   'batter_ordinal' => 4 | null,  // <dt>打者4</dt> などから抽出。無ければ null
  * ]
  *

@@ -11,13 +11,12 @@ use App\Scraper\Score\GameScoreScraper;
  * ScoreWalker
  * -----------
  * /score の「前へ/次へ」を辿って1打席(=ゲーム全体)の全ページを収集する開発用ユーティリティ。
- * - 入口URLがゲームルート(/npb/game/{id})や /score（indexなし）でもOK
- * - まず「前へ」を遡って最古ページを特定 → そこから「次へ」で順次前進
+ * - 入口URLはゲームルート
  * - ページ内容は GameScoreScraper の生結果を pages[] に積む（統合/重複排除は上位で実施）
  */
 final class ScoreWalker
 {
-    private const BASE = 'https://baseball.yahoo.co.jp';
+    private const START_INDEX = '0110100'; // '01' = 1回 + '1' = 表（'2' = 裏） + '01' = 1番打者 + '00' = index
 
     private GameScoreScraper $scraper;
 
@@ -38,58 +37,31 @@ final class ScoreWalker
      *   pages: array<int, array>
      * }
      */
-    public function walk(string $url): array
+    public function walk(string $gameRoot): array
     {
-        $currentUrl = $this->normalizeUrl($url);
-        if (!str_contains($currentUrl, '/score')) {
-            // ルートが来た場合は /score に寄せる（index なし＝最終状態）
-            $currentUrl = rtrim($currentUrl, '/') . '/score';
-        }
+        $currentUrl = $this->indexToUrl($gameRoot, self::START_INDEX);
 
-        // --- まず入口ページを取得 ---
-        $page = $this->scraper->scrape($currentUrl);
-
-        // --- prev で最古ページまで遡る ---
-        $visited = [];
-        $currentUrl = $page['url'] ?? $currentUrl;
-        $visited[$this->pageKey($currentUrl)] = true;
-
-        while (true) {
-            $prevHref = $page['replay_nav']['prev']['href'] ?? null;
-            if (!$prevHref) {
-                break;
-            }
-            $prevUrl = $this->absolutize($prevHref);
-            $key = $this->pageKey($prevUrl);
-            if (isset($visited[$key])) {
-                break; // ループ安全策
-            }
-            $visited[$key] = true;
-            $page = $this->scraper->scrape($prevUrl);
-            $currentUrl = $page['url'] ?? $prevUrl;
-        }
-
-        // --- ここが最古ページ。ここから next で前進収集 ---
         $pages = [];
         $firstUrl = $currentUrl;
         $firstIndex = $this->extractIndexFromUrl($firstUrl);
 
         while (true) {
-            $pages[] = $page;
+            $currentIndex = $this->extractIndexFromUrl($currentUrl);
+            $data = $this->scraper->scrape($currentUrl);
 
-            $nextHref = $page['replay_nav']['next']['href'] ?? null;
+            $pages[] = [
+                'url'   => $currentUrl,
+                'index' => $currentIndex,
+                'data'  => $data,
+            ];
+
+            $nextHref = $data['replay_nav']['next']['href'] ?? null;
+            $nextIndex = $this->extractIndexFromUrl((string)$nextHref);
             if (!$nextHref) {
                 break;
             }
-            $nextUrl = $this->absolutize($nextHref);
-            $key = $this->pageKey($nextUrl);
-            if (isset($visited[$key])) {
-                break; // 念のため重複を防止
-            }
-            $visited[$key] = true;
 
-            $page = $this->scraper->scrape($nextUrl);
-            $currentUrl = $page['url'] ?? $nextUrl;
+            $currentUrl = $this->indexToUrl($gameRoot, $nextIndex);
         }
 
         $lastUrl   = $currentUrl;
@@ -108,30 +80,9 @@ final class ScoreWalker
 
     // ---------------- helpers ----------------
 
-    private function normalizeUrl(string $url): string
+    private function indexToUrl(string $gameRoot, string $index): string
     {
-        $url = trim($url);
-        if ($url === '') return self::BASE . '/';
-        if (str_starts_with($url, 'http://') || str_starts_with($url, 'https://')) {
-            return $url;
-        }
-        if (!str_starts_with($url, '/')) {
-            $url = '/' . $url;
-        }
-        return self::BASE . $url;
-    }
-
-    private function absolutize(string $href): string
-    {
-        $href = trim($href);
-        if ($href === '') return self::BASE . '/';
-        if (str_starts_with($href, 'http://') || str_starts_with($href, 'https://')) {
-            return $href;
-        }
-        if (!str_starts_with($href, '/')) {
-            $href = '/' . $href;
-        }
-        return self::BASE . $href;
+        return rtrim($gameRoot, '/') . '/score?index=' . $index;
     }
 
     private function extractIndexFromUrl(string $url): ?string
@@ -149,11 +100,5 @@ final class ScoreWalker
             return $m[1];
         }
         return null;
-    }
-
-    private function pageKey(string $url): string
-    {
-        // index があればそれをキーに、なければ URL 全体で
-        return $this->extractIndexFromUrl($url) ?? $url;
     }
 }
