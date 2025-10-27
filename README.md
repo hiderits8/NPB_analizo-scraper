@@ -22,26 +22,26 @@
 
 ## 現在のコンポーネント
 
-| コンポーネント                                 | 役割                                                       |
-| ---------------------------------------------- | ---------------------------------------------------------- |
-| `GameTopScraper` + Extractors                  | `/top` ページから試合メタ・スタメン・ベンチ情報を抽出      |
-| `GameScoreScraper` + Extractors                | `/score?index=` ページの BSO, 結果イベント, 投球詳細を抽出 |
-| `GameStatsScraper`                             | `/stats` ページのイニング別スコア・打撃/投手成績を抽出     |
-| `Resolver`, `AliasNormalizer`, `AliasesLoader` | API 辞書とローカル別名リストを組み合わせて ID 解決         |
-| `bin/alias.php`                                | 未解決名を運用者が手動登録する CLI                         |
-| `src/Orchestrator/ScoreWalker.php`             | `/score` ページを「前へ」「次へ」で巡回し、重複なく収集    |
+| コンポーネント | 役割 |
+| -------------- | ---- |
+| `GameTopScraper` + Extractors | `/top` ページから試合メタ・スタメン・ベンチ情報を抽出 |
+| `GameScoreScraper` + Extractors | `/score?index=` ページの BSO, 結果イベント, 投球詳細を抽出 |
+| `GameStatsScraper` | `/stats` ページのイニング別スコア・打撃/投手成績を抽出 |
+| `Resolver`, `AliasNormalizer`, `AliasesLoader` | API 辞書とローカル別名リストを組み合わせて ID 解決 |
+| `bin/alias.php` | 未解決名を運用者が手動登録する CLI |
+| `src/Orchestrator/ScoreWalker.php` | `/score` ページを「前へ」「次へ」で巡回し、重複なく収集 |
 
 ## ディレクトリ構成（現状）
 
-| Path                                     | 役割                                                      |
-| ---------------------------------------- | --------------------------------------------------------- |
-| `bin/`                                   | CLI エントリーポイント。AWS ワーカー化のベース。          |
-| `src/Scraper/Top` / `Score` / `Stats`    | ページ種別ごとのスクレイパー + 抽出器。                   |
-| `src/Orchestrator`                       | ページ遷移を制御するユーティリティ (`ScoreWalker` など)。 |
-| `src/Resolver` / `src/Http` / `src/Util` | 辞書解決、API クライアント、共通ヘルパー。                |
-| `data/`                                  | ベース/ローカル別名辞書。                                 |
-| `logs/`                                  | ローカル実行時の成果物・未解決名。                        |
-| `test/`                                  | 依存 API と Resolver のスモークテスト。                   |
+| Path | 役割 |
+| ---- | ---- |
+| `bin/` | CLI エントリーポイント。AWS ワーカー化のベース。 |
+| `src/Scraper/Top` / `Score` / `Stats` | ページ種別ごとのスクレイパー + 抽出器。 |
+| `src/Orchestrator` | ページ遷移を制御するユーティリティ (`ScoreWalker` など)。 |
+| `src/Resolver` / `src/Http` / `src/Util` | 辞書解決、API クライアント、共通ヘルパー。 |
+| `data/` | ベース/ローカル別名辞書。 |
+| `logs/` | ローカル実行時の成果物・未解決名。 |
+| `test/` | 依存 API と Resolver のスモークテスト。 |
 
 ## 必要環境（開発フェーズ）
 - PHP **8.4** (`mbstring`, `dom`, `json`, `curl`, `iconv`)

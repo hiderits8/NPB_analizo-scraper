@@ -234,7 +234,7 @@ final class ResultEventExtractor
 
     private function StealSuccess(string $emText): bool
     {
-        return preg_match('/盗塁成功/u', $emText) === 1;
+        return preg_match('/盗塁成功(?!率)/u', $emText) === 1;
     }
 
     private function StealFailure(string $emText): bool
