@@ -11,6 +11,18 @@ use App\Scraper\Top\GameTopScraper;
 
 require_once __DIR__ . '/_bootstrap.php';
 
+// ---- globals / paths ----
+$root = $projectRoot ?? dirname(__DIR__);
+$APP_QUIET = (bool) ((int) ($_ENV['APP_QUIET'] ?? getenv('APP_QUIET') ?? 0));
+$pendingDirEnv = $_ENV['APP_PENDING_DIR'] ?? getenv('APP_PENDING_DIR') ?? 'logs/pending_aliases';
+$PENDING_DIR = $root . '/' . ltrim($pendingDirEnv, '/');
+if (!is_dir($PENDING_DIR)) {
+    mkdir($PENDING_DIR, 0777, true);
+}
+if (!is_dir($PENDING_DIR . '/_resolved')) {
+    mkdir($PENDING_DIR . '/_resolved', 0777, true);
+}
+
 // ---- args ----
 $opts = getopt('', [
     'url:',        // required
@@ -65,6 +77,7 @@ try {
 }
 
 // 4) 未解決マップを作成 (スクレイパーが提供しない場合のフォールバック)
+$participants = $result['participants'] ?? ['home' => [], 'away' => []];
 $unresolvedMap = $result['game_meta']['unresolved_map'] ?? [];
 
 if (empty($unresolvedMap)) {
@@ -172,7 +185,7 @@ $deriveYmd = function (array $res) use ($year): string {
         }
     }
     // フォールバック：今日（Asia/Tokyo）
-    return (new \DateTime('now', new \DateTimeZone('Asia/Tokyo')))->format('Ymd') + 'Fallback(scrape date)';
+    return (new \DateTime('now', new \DateTimeZone('Asia/Tokyo')))->format('Ymd') . '-fallback';
 };
 
 $ymd = $deriveYmd($result);
