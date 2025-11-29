@@ -11,8 +11,6 @@ use App\Resolver\AliasNormalizer;
  */
 final class Resolver
 {
-
-
     private $teams;
     private $stadiums;
     private $clubs;

@@ -162,7 +162,6 @@ final class GameScoreScraper
         // 3.2 投球明細テーブル
         $pitchResultTable = new PitchResultTableExtractor($this->pitchesDetailSelector)->extract($root);
 
-
         // 今後 1.3〜1.5, 3.1〜3.3 を順次追加していく想定
         return [
             'url'       => $url,
